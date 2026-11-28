@@ -105,14 +105,14 @@ mod shots {
         fn open_contacts_row(&mut self, who: &str) {
             let row = format!("contacts-{who}");
             if !self.window(move |window, _| window.try_find(row).is_some()) {
-                self.click(None, "rail-contacts");
+                self.click(None, "nav-contacts");
             }
             self.click(Some(&format!("contacts-{who}")), "message");
         }
 
         fn close_dock(&mut self) {
-            if self.window(|window, _| window.try_find("dock-content-contacts").is_some()) {
-                self.click(None, "rail-contacts");
+            if self.window(|window, _| window.try_find("dock-contacts").is_some()) {
+                self.click(None, "nav-contacts");
             }
         }
 

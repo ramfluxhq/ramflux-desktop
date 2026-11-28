@@ -31,6 +31,13 @@ impl EntryPage {
         if url.is_empty() {
             return;
         }
+        // A node is reached over https only: nothing is looked up otherwise.
+        if url.to_ascii_lowercase().starts_with("http://") {
+            self.http_refused = true;
+            cx.notify();
+            return;
+        }
+        self.http_refused = false;
         self.inputs.node_url.update(cx, |input, cx| input.set_value("", window, cx));
         self.node_lookup = Some(self.store.read(cx).store().failures_total());
         self.sink.emit(UiEventKind::AddNodeRequested { url }, window, cx);
@@ -204,6 +211,15 @@ impl EntryPage {
                             .text_color(cx.theme().muted_foreground)
                             .child(tr("entry.node.add_help")),
                     )
+                    .children(self.http_refused.then(|| {
+                        div()
+                            .id("entry-node-https-only")
+                            .role(Role::Alert)
+                            .text_size(text_caption())
+                            .text_color(cx.theme().danger)
+                            .child(tr("entry.node.https_only"))
+                            .test_support()
+                    }))
                     .children(lookup_failure.map(|reason| {
                         div()
                             .id("entry-node-add-failure")

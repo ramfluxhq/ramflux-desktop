@@ -391,7 +391,14 @@ impl Shell {
             page = Page::Cover;
         }
         // The lock and the cover come first: nothing else is routed over them.
-        if !matches!(page, Page::Lock | Page::Cover) {
+        // A locked account without an app lock shows the lock page too, but a
+        // restore result that is still in view takes the window back (below).
+        let app_held = {
+            let locks = handle.entry_store();
+            locks.accounts().any(|a| locks.app_locked(&a.id))
+        };
+        let account_lock = page == Page::Lock && !app_held;
+        if !matches!(page, Page::Lock | Page::Cover) || account_lock {
             let entry = self.entry.read(cx);
             // A full restore's result stays on the entry page until the user
             // closes it, even once the daemon reopened the restored account.
@@ -399,7 +406,7 @@ impl Shell {
             // would also route back to an earlier step (the daemon step) until
             // its first jobs listing: the account step holds that interval too.
             if entry.holds_restore(cx)
-                && (page == Page::Workspace || entry.awaits_restore_listing(cx))
+                && (page == Page::Workspace || account_lock || entry.awaits_restore_listing(cx))
             {
                 page = Page::Entry(EntryStep::Account);
             }

@@ -87,6 +87,7 @@ fn expected() -> Vec<SharedString> {
         "entry.account.passphrase",
         "settings.account.current",
         "settings.account.next",
+        "settings.account.repeat",
     ]
     .into_iter()
     .map(tr)

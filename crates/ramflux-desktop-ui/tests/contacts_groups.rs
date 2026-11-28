@@ -54,7 +54,7 @@ fn open_with_home(
     wait(cx, "the account", |cx| {
         with_store(cx, &shell, |s| s.context(&ContextId::new("dm-ana")).is_some())
     });
-    click(cx, handle, "rail-contacts");
+    click(cx, handle, "nav-contacts");
     (handle, shell, state, fake)
 }
 
@@ -317,7 +317,7 @@ fn a_new_group_is_created_with_its_members_named_and_renamed(cx: &mut TestAppCon
     });
     add(cx, handle, "principal-lu");
     wait(cx, "lu", |cx| contact(cx, &shell, "principal-lu").is_some());
-    click(cx, handle, "rail-contacts");
+    click(cx, handle, "nav-contacts");
 
     click(cx, handle, "stack-new");
     click_label(cx, handle, &tr("stack.new_group"));
@@ -415,7 +415,7 @@ fn a_new_group_is_created_with_its_members_named_and_renamed(cx: &mut TestAppCon
 #[gpui_kit::test]
 fn a_direct_conversation_has_no_rename_and_cancel_leaves_no_group(cx: &mut TestAppContext) {
     let (handle, shell, state, fake) = open(cx, "f14-cancel");
-    click(cx, handle, "rail-contacts");
+    click(cx, handle, "nav-contacts");
     show_context(cx, handle, &shell, "dm-ana");
     click(cx, handle, "conversation-more");
     assert!(

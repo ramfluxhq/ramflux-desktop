@@ -279,7 +279,16 @@ fn map(
                 Some(PinSource::Bootstrap) => "builtin",
                 None => return refuse_invalid("unknown pin source"),
             };
-            let request = json!({ "node_id": text(body, "node_id"), "pin_source": pin });
+            let mut request = json!({ "node_id": text(body, "node_id"), "pin_source": pin });
+            if pin == "tofu" {
+                // First use pins the key the user was shown: it is sent back
+                // as the expected key, so a different one is refused.
+                let key = text(body, "public_key");
+                if key.is_empty() {
+                    return refuse_invalid("no node key to trust");
+                }
+                request["expected_public_key"] = json!(key);
+            }
             call(BusRequest::new(None, "node", "node.confirm", request))
         }
         methods::NODE_PROBE => call(BusRequest::new(None, "node", "node.probe", node())),

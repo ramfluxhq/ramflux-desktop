@@ -47,8 +47,8 @@ fn objects_dock_lists_transfers_and_pulls(cx: &mut TestAppContext) {
 fn contacts_dock_answers_requests_and_verifies(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s04_safety");
     advance(cx, 1_000);
-    click(cx, handle, "rail-contacts");
-    assert!(exists(cx, handle, "dock-content-contacts"));
+    click(cx, handle, "nav-contacts");
+    assert!(exists(cx, handle, "dock-contacts"));
     in_window(cx, handle, |window, cx| {
         window.within("contacts-request-m-noor").click("accept", cx)
     });

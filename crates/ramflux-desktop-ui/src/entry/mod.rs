@@ -127,6 +127,8 @@ pub struct EntryPage {
     lock_notice: Option<remove::LockNotice>,
     /// The node step's "Technical details" disclosure is open.
     node_details: bool,
+    /// The last typed node address was plain http and was refused.
+    http_refused: bool,
     /// The name of an account just removed from this device.
     removed_notice: Option<gpui_kit::SharedString>,
     node: Option<NodeId>,
@@ -266,6 +268,7 @@ impl EntryPage {
             lock_notice: None,
             removed_notice: None,
             node_details: false,
+            http_refused: false,
             node: None,
             review_nodes: false,
             submitted: None,

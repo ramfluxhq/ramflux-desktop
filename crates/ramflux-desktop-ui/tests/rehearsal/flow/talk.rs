@@ -29,7 +29,7 @@ pub fn contacts<H: Host, D: DemoDaemon>(
         let text = if by_card { card.clone() } else { id.clone() };
         let desk = demo.sides[me].desk()?;
         if !desk.exists(demo.host, "contact-add-id") {
-            desk.click(demo.host, None, "rail-contacts")?;
+            desk.click(demo.host, None, "nav-contacts")?;
         }
         // The card Alice imported asks Bob: the daemon holds her request, and
         // Bob answers it (adding her by id is refused while it waits).
@@ -94,7 +94,7 @@ pub fn contacts<H: Host, D: DemoDaemon>(
         demo.shots(me, if by_card { "04_add_by_card" } else { "04_add_by_id" }, notes)?;
         verify(demo, me, &participant, &row, notes)?;
         demo.shots(me, "04_contacts", notes)?;
-        demo.sides[me].desk()?.click(demo.host, None, "rail-contacts")?;
+        demo.sides[me].desk()?.click(demo.host, None, "nav-contacts")?;
     }
     Ok(())
 }
@@ -109,7 +109,7 @@ pub(super) fn shown_card<H: Host, D: DemoDaemon>(
 ) -> Result<String, String> {
     let desk = demo.sides[ix].desk()?;
     if !desk.exists(demo.host, "contact-card-show") {
-        desk.click(demo.host, None, "rail-contacts")?;
+        desk.click(demo.host, None, "nav-contacts")?;
     }
     desk.click(demo.host, None, "contact-card-show")?;
     let limit = demo.config.limits.answer;
@@ -270,7 +270,7 @@ fn start<H: Host, D: DemoDaemon>(
     let limit = demo.config.limits.answer;
     let desk = demo.sides[0].desk()?;
     if !desk.exists(demo.host, &row) {
-        desk.click(demo.host, None, "rail-contacts")?;
+        desk.click(demo.host, None, "nav-contacts")?;
     }
     desk.click(demo.host, Some(&row), "message")?;
     // Accepting the request made the direct conversation already: Message
@@ -367,7 +367,7 @@ pub fn attachment<H: Host, D: DemoDaemon>(
             let card = shown_card(demo, to, notes)?;
             let desk = demo.sides[from].desk()?;
             if !desk.exists(demo.host, "contact-add-id") {
-                desk.click(demo.host, None, "rail-contacts")?;
+                desk.click(demo.host, None, "nav-contacts")?;
             }
             desk.type_into(demo.host, "contact-add-id", &card)?;
             desk.click(demo.host, None, "contact-add")?;

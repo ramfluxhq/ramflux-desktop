@@ -809,6 +809,33 @@ impl EntryPage {
                             .design_disabled(blocked || nothing_to_unlock, cx)
                             .on_click(cx.listener(|this, _, window, cx| this.unlock(window, cx))),
                     );
+                // A person's account on a daemon that offers the phrase: the
+                // recovery is the user's own request, a secondary button with
+                // its whole label.
+                let recoverable = target.as_ref().filter(|id| {
+                    let handle = self.store.read(cx);
+                    (handle.store().offers_born_v3_creation()
+                        || handle.entry_store().offers_born_v3_creation())
+                        && handle
+                            .entry_store()
+                            .account(id)
+                            .is_some_and(|a| a.kind == AccountKind::HumanInteractive)
+                });
+                if let Some(account) = recoverable.cloned() {
+                    let name = self.account_name(&account, cx);
+                    column = column.child(
+                        Button::new(domain_id("account-recover", &account))
+                            .design_secondary(cx)
+                            .design_label(tr("recovery.entry.button"))
+                            .accessibility_label(tr_args(
+                                "recovery.entry.label",
+                                &[("name", &name)],
+                            ))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.open_recovery(account.clone(), window, cx);
+                            })),
+                    );
+                }
             }
         }
         let dialog = if cover { None } else { self.render_remove_dialog(&self.remove_focus, cx) };

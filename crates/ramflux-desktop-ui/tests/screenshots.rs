@@ -263,9 +263,9 @@ mod shots {
         // 8. Contacts dock beside a sticky safety warning.
         s.scenario("s04_safety", 1_000);
         s.show("c-mira", None);
-        s.click("rail-contacts");
+        s.click("nav-contacts");
         s.both("08_contacts_dock");
-        s.click("rail-contacts");
+        s.click("nav-contacts");
 
         // 9. Objects dock: transfers in a table with their actions.
         s.scenario("s02_daily", 3_000);
@@ -316,9 +316,9 @@ mod shots {
         s.both("11_workspace_no_conversations");
 
         // 12. The contacts dock of that account: listed and empty.
-        s.click("rail-contacts");
+        s.click("nav-contacts");
         s.both("12_contacts_dock_empty");
-        s.click("rail-contacts");
+        s.click("nav-contacts");
 
         // 13. Keyboard: secondary-j focuses the moment that needs the user,
         //     Tab moves to its Approve button (focus ring).

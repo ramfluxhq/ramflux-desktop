@@ -80,7 +80,7 @@ fn an_unreachable_host_names_the_local_network_permission(cx: &mut TestAppContex
         assert_eq!(label.as_deref(), Some(text.as_ref()), "the translated permission hint");
         assert_ne!(text.as_ref(), "backend.failure.local_network", "a translation exists");
     } else {
-        assert!(label.is_some_and(|l| l.contains("os error 65")), "the daemon's reason");
+        assert_eq!(label.as_deref(), Some(tr("backend.failure.generic").as_ref()));
     }
 }
 
@@ -99,17 +99,17 @@ fn a_failed_request_to_a_local_network_host_suggests_the_permission(cx: &mut Tes
         assert_eq!(label.as_deref(), Some(text.as_ref()));
         assert!(text.contains("192.168.0.10"), "the host is named: {text}");
     } else {
-        assert!(label.is_some_and(|l| l.contains("error sending request")));
+        assert_eq!(label.as_deref(), Some(tr("backend.failure.generic").as_ref()));
     }
 }
 
 #[gpui_kit::test]
-fn any_other_lookup_failure_shows_the_daemons_reason(cx: &mut TestAppContext) {
+fn any_other_lookup_failure_shows_the_generic_sentence_not_the_daemons_text(
+    cx: &mut TestAppContext,
+) {
     let label = lookup_failure(cx, "lan-sig", "client record verification failed");
-    assert!(
-        label.as_deref().is_some_and(|l| l.contains("client record verification failed")),
-        "{label:?}"
-    );
+    let generic = ramflux_desktop_ui::i18n::tr("backend.failure.generic").to_string();
+    assert_eq!(label.as_deref(), Some(generic.as_str()), "{label:?}");
 }
 
 #[gpui_kit::test]

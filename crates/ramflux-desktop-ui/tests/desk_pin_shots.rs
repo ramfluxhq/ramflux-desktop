@@ -283,7 +283,7 @@ mod shots {
         let inbound = requests.incoming("acct-main", "principal-ana", Some("Saw your request too"));
         let _ = requests.outgoing("acct-main", "principal-bo");
         publish("acct-main", "contact.changed", json!({}));
-        run.click("rail-contacts");
+        run.click("nav-contacts");
         run.until("both requests", |r| r.exists("contacts-request-principal-ana"));
         run.settle();
         run.shot("pin_04_crossed_request");
@@ -329,7 +329,7 @@ mod shots {
             r.cx.update(|cx| r.shell.read(cx).page()) == Page::Workspace
         });
         run.settle();
-        run.click("rail-contacts");
+        run.click("nav-contacts");
         run.until("the blocked contact", |r| r.exists("contacts-blocked-p-ivo"));
         run.settle();
         run.shot("pin_07_blocked_contact");

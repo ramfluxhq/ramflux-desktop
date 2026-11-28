@@ -499,6 +499,7 @@
   "entry.node.url_placeholder": null,
   "entry.node.add": null,
   "entry.node.add_help": null,
+  "entry.node.https_only": null,
   "entry.node.continue": null,
   "entry.node.known": null,
   "entry.node.label": null,

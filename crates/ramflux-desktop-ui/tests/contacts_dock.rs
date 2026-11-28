@@ -20,8 +20,8 @@ type Handle = WindowHandle<gpui_kit::base::Root>;
 fn open_contacts(cx: &mut TestAppContext) -> (Handle, gpui_kit::Entity<ramflux_desktop_ui::Shell>) {
     let (handle, shell) = open(cx, "s04_safety");
     advance(cx, 1_000);
-    click(cx, handle, "rail-contacts");
-    assert!(exists(cx, handle, "dock-content-contacts"));
+    click(cx, handle, "nav-contacts");
+    assert!(exists(cx, handle, "dock-contacts"));
     (handle, shell)
 }
 

@@ -120,6 +120,7 @@ pub(crate) fn node_from_profile(profile: &Value, default: Option<&str>, confirme
         id: NodeId::new(id),
         endpoints,
         fingerprint,
+        public_key: (!key.is_empty()).then(|| key.to_owned()),
         pin_source,
         health: NodeHealth::Unknown,
         capabilities: list(profile, "client_capabilities")

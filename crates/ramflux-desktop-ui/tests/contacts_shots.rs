@@ -187,7 +187,7 @@ mod shots {
             r.cx.update(|cx| r.shell.read(cx).page()) == Page::Workspace
         });
         run.until("the account", |r| r.store(|s| s.context(&ContextId::new("dm-ana")).is_some()));
-        run.click("rail-contacts");
+        run.click("nav-contacts");
 
         // Adding by principal id: trusted on first use, unverified.
         run.type_into("contact-add-id", "principal-kai");
@@ -225,7 +225,7 @@ mod shots {
 
         // First direct message to the contact added by id.
         run.window(|window, cx| window.within("contacts-principal-kai").click("message", cx));
-        run.click("rail-contacts");
+        run.click("nav-contacts");
         run.type_into("composer-input", "Hello Kai, I added you by your id");
         run.shot("f14_07_first_dm_draft");
         run.click("composer-send");

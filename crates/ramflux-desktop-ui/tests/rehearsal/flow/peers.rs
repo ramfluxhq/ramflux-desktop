@@ -150,7 +150,7 @@ pub fn contacts<H: Host, D: DemoDaemon>(
         let card = answer["card"].as_str().ok_or("the peer exported no card")?.to_owned();
         let desk = demo.sides[0].desk()?;
         if !desk.exists(demo.host, "contact-add-id") {
-            desk.click(demo.host, None, "rail-contacts")?;
+            desk.click(demo.host, None, "nav-contacts")?;
         }
         desk.type_into(demo.host, "contact-add-id", &card)?;
         let kind = desk.label(demo.host, "contact-add-kind").unwrap_or_default();
@@ -240,7 +240,7 @@ pub fn messages<H: Host, D: DemoDaemon>(
     let row = format!("contacts-{}", peer.principal);
     let desk = demo.sides[0].desk()?;
     if !desk.exists(demo.host, &row) {
-        desk.click(demo.host, None, "rail-contacts")?;
+        desk.click(demo.host, None, "nav-contacts")?;
     }
     desk.click(demo.host, Some(&row), "message")?;
     let desk = demo.sides[0].desk()?;
@@ -757,7 +757,7 @@ pub fn invitation<H: Host, D: DemoDaemon>(
     let row = format!("group-invitation-{group}");
     let desk = demo.sides[1].desk()?;
     if !desk.exists(demo.host, &row) {
-        desk.click(demo.host, None, "rail-contacts")?;
+        desk.click(demo.host, None, "nav-contacts")?;
     }
     let desk = demo.sides[1].desk()?;
     if !desk.exists(demo.host, &row) {

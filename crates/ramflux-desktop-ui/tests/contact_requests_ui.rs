@@ -51,8 +51,8 @@ fn open_requests(cx: &mut TestAppContext, name: &str, available: bool) -> World 
     wait(cx, "the stream", |cx| {
         with_store(cx, &shell, |s| s.sync_status().is_some_and(|x| x.mode == SyncMode::Stream))
     });
-    click(cx, handle, "rail-contacts");
-    assert!(exists(cx, handle, "dock-content-contacts"));
+    click(cx, handle, "nav-contacts");
+    assert!(exists(cx, handle, "dock-contacts"));
     World { fake, requests, handle, shell }
 }
 

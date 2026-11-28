@@ -186,13 +186,13 @@ mod shots {
                     .is_some_and(|p| p.kind_claim == KindClaim::Verified(PeerKind::Human))
             })
         });
-        run.click("rail-contacts");
+        run.click("nav-contacts");
         run.settle();
         run.shot("f23_01_contacts_kinds");
 
         // The conversation with Ana: her kind mark and name warning in the
         // header and on her messages, then her authenticated rename.
-        run.click("rail-contacts");
+        run.click("nav-contacts");
         run.show("dm-ana");
         run.settle();
         run.shot("f23_02_conversation_header");
@@ -223,7 +223,7 @@ mod shots {
         run.click_in("call-stale-ack", "stale-verify");
 
         // A new conversation with Cy (stale too) asks the same, inline.
-        run.click("rail-contacts");
+        run.click("nav-contacts");
         run.click_in("contacts-principal-cy", "message");
         run.settle();
         run.shot("f23_07_stale_new_conversation");

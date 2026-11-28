@@ -13,6 +13,7 @@ fn node(id: &str, is_default: bool) -> Node {
         id: NodeId::new(id),
         endpoints: Vec::new(),
         fingerprint: None,
+        public_key: None,
         pin_source: PinSource::Invite,
         health: NodeHealth::Unknown,
         capabilities: Vec::new(),

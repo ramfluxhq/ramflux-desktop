@@ -504,6 +504,7 @@
   "entry.node.url_placeholder": "https://node.example.org",
   "entry.node.add": "Look up",
   "entry.node.add_help": "The node's signed record is checked before anything is saved.",
+  "entry.node.https_only": "Use an https address.",
   "entry.node.continue": "Continue",
   "entry.node.known": "Nodes you trust",
   "entry.node.label": "Node",

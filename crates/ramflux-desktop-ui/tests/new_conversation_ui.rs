@@ -43,7 +43,7 @@ fn open_workspace(
 
 fn message_from_contacts(cx: &mut TestAppContext, handle: Handle, who: &str) {
     if !exists(cx, handle, &format!("contacts-{who}")) {
-        click(cx, handle, "rail-contacts");
+        click(cx, handle, "nav-contacts");
     }
     click_in(cx, handle, &format!("contacts-{who}"), "message");
 }

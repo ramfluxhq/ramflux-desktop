@@ -18,19 +18,22 @@ use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, StyledExt as
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, Window, div};
 use ramflux_desktop_core::{Node, NodeAction, PinSource, UiEventKind};
-use ramflux_desktop_navigation::direction::{forward_icon, h_flex};
+use ramflux_desktop_navigation::direction::{DirectionalExt as _, forward_icon, h_flex};
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary, text_subheading};
 
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr};
 use crate::ids::domain_id;
 
+/// Flips a disclosure.
+pub type Toggle = Rc<dyn Fn(&mut Window, &mut App)>;
+
 /// The disclosure state a card shows: view-local, owned by the page.
 pub struct Disclosure {
     /// Whether the technical details are showing.
     pub open: bool,
     /// Flips `open`.
-    pub toggle: Rc<dyn Fn(&mut Window, &mut App)>,
+    pub toggle: Toggle,
     /// The local service's socket and open accounts line, when known.
     pub socket: Option<SharedString>,
 }
@@ -97,7 +100,7 @@ impl RenderOnce for NodeCard {
             let cancel_id = node.id.clone();
             h_flex()
                 .gap(space(2.))
-                .justify_end()
+                .justify_row_end()
                 .child(
                     // Cancel keeps what "Not now" did: the discovered node is
                     // dropped, so nothing is pinned and the address can be

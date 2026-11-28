@@ -84,7 +84,7 @@ fn label_of(cx: &mut TestAppContext, world: &World, id: &'static str) -> Option<
 #[gpui_kit::test]
 fn contacts_say_how_far_a_kind_is_proven_and_warn_on_a_confusable_name(cx: &mut TestAppContext) {
     let world = open_profiles(cx, "ui-kind-contacts");
-    click(cx, world.handle, "rail-contacts");
+    click(cx, world.handle, "nav-contacts");
     wait(cx, "the contacts", |cx| exists(cx, world.handle, "contacts-principal-ana"));
     // A root-signed profile: the kind, verified; the mark belongs to the
     // kind, not to the name.
@@ -242,7 +242,7 @@ fn two_long_ids_sharing_a_prefix_stay_apart_in_full(cx: &mut TestAppContext) {
             s.participant(&ParticipantId::new(other_id)).is_some_and(|p| p.name_warnings.any())
         })
     });
-    click(cx, handle, "rail-contacts");
+    click(cx, handle, "nav-contacts");
     let row = format!("contacts-{other_id}");
     wait(cx, "the row", |cx| exists(cx, handle, &row));
     let text_of = |cx: &mut TestAppContext, scope: String, id: &'static str| {

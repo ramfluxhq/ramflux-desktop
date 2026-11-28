@@ -60,11 +60,11 @@ pub const ROWS: [Row; 9] = [
         custody_failure: CeremonyFailure::Vault(VaultReason::Missing),
         ceremony: Text {
             en: r#"This device's key vault is not set up, so no account was created. Set it up, then try again."#,
-            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5c1a}\u{672a}\u{8bbe}\u{7f6e}\u{ff0c}\u{56e0}\u{6b64}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{53f7}\u{3002}\u{8bf7}\u{5148}\u{8bbe}\u{7f6e}\u{ff0c}\u{7136}\u{540e}\u{91cd}\u{8bd5}\u{3002}",
+            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5c1a}\u{672a}\u{8bbe}\u{7f6e}\u{ff0c}\u{56e0}\u{6b64}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{6237}\u{3002}\u{8bf7}\u{5148}\u{8bbe}\u{7f6e}\u{ff0c}\u{7136}\u{540e}\u{91cd}\u{8bd5}\u{3002}",
         },
         recovery: Text {
             en: r#"This device's key vault is not set up, so the account was not recovered. Set it up, then start over. Nothing was changed."#,
-            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5c1a}\u{672a}\u{8bbe}\u{7f6e}\u{ff0c}\u{56e0}\u{6b64}\u{672a}\u{6062}\u{590d}\u{8d26}\u{53f7}\u{3002}\u{8bf7}\u{5148}\u{8bbe}\u{7f6e}\u{ff0c}\u{7136}\u{540e}\u{91cd}\u{65b0}\u{5f00}\u{59cb}\u{3002}\u{672a}\u{505a}\u{4efb}\u{4f55}\u{66f4}\u{6539}\u{3002}",
+            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5c1a}\u{672a}\u{8bbe}\u{7f6e}\u{ff0c}\u{56e0}\u{6b64}\u{672a}\u{6062}\u{590d}\u{8d26}\u{6237}\u{3002}\u{8bf7}\u{5148}\u{8bbe}\u{7f6e}\u{ff0c}\u{7136}\u{540e}\u{91cd}\u{65b0}\u{5f00}\u{59cb}\u{3002}\u{672a}\u{505a}\u{4efb}\u{4f55}\u{66f4}\u{6539}\u{3002}",
         },
         bus: Text {
             en: r#"The key vault of this device is not set up."#,
@@ -81,11 +81,11 @@ pub const ROWS: [Row; 9] = [
         custody_failure: CeremonyFailure::Vault(VaultReason::InitPending),
         ceremony: Text {
             en: r#"Setting up this device's key vault was not finished, so no account was created. Finish it on this device (rf vault init), then try again."#,
-            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5c1a}\u{672a}\u{8bbe}\u{7f6e}\u{5b8c}\u{6210}\u{ff0c}\u{56e0}\u{6b64}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{53f7}\u{3002}\u{8bf7}\u{5728}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{4e0a}\u{5b8c}\u{6210}\u{8bbe}\u{7f6e}\u{ff08}rf vault init\u{ff09}\u{ff0c}\u{7136}\u{540e}\u{91cd}\u{8bd5}\u{3002}",
+            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5c1a}\u{672a}\u{8bbe}\u{7f6e}\u{5b8c}\u{6210}\u{ff0c}\u{56e0}\u{6b64}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{6237}\u{3002}\u{8bf7}\u{5728}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{4e0a}\u{5b8c}\u{6210}\u{8bbe}\u{7f6e}\u{ff08}rf vault init\u{ff09}\u{ff0c}\u{7136}\u{540e}\u{91cd}\u{8bd5}\u{3002}",
         },
         recovery: Text {
             en: r#"Setting up this device's key vault was not finished, so the account was not recovered. Finish it on this device (rf vault init), then start over. Nothing was changed."#,
-            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5c1a}\u{672a}\u{8bbe}\u{7f6e}\u{5b8c}\u{6210}\u{ff0c}\u{56e0}\u{6b64}\u{672a}\u{6062}\u{590d}\u{8d26}\u{53f7}\u{3002}\u{8bf7}\u{5728}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{4e0a}\u{5b8c}\u{6210}\u{8bbe}\u{7f6e}\u{ff08}rf vault init\u{ff09}\u{ff0c}\u{7136}\u{540e}\u{91cd}\u{65b0}\u{5f00}\u{59cb}\u{3002}\u{672a}\u{505a}\u{4efb}\u{4f55}\u{66f4}\u{6539}\u{3002}",
+            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5c1a}\u{672a}\u{8bbe}\u{7f6e}\u{5b8c}\u{6210}\u{ff0c}\u{56e0}\u{6b64}\u{672a}\u{6062}\u{590d}\u{8d26}\u{6237}\u{3002}\u{8bf7}\u{5728}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{4e0a}\u{5b8c}\u{6210}\u{8bbe}\u{7f6e}\u{ff08}rf vault init\u{ff09}\u{ff0c}\u{7136}\u{540e}\u{91cd}\u{65b0}\u{5f00}\u{59cb}\u{3002}\u{672a}\u{505a}\u{4efb}\u{4f55}\u{66f4}\u{6539}\u{3002}",
         },
         bus: Text {
             en: r#"Setting up the key vault of this device was not finished. Finish it on this device (rf vault init)."#,
@@ -102,7 +102,7 @@ pub const ROWS: [Row; 9] = [
         custody_failure: CeremonyFailure::Vault(VaultReason::ImportPending),
         ceremony: Text {
             en: r#"Importing the provisioned keys into this device's key vault was not finished, so no account was created. Retry the provisioning import, then try again."#,
-            zh: "\u{5411}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5bfc}\u{5165}\u{9884}\u{7f6e}\u{5bc6}\u{94a5}\u{5c1a}\u{672a}\u{5b8c}\u{6210}\u{ff0c}\u{56e0}\u{6b64}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{53f7}\u{3002}\u{8bf7}\u{91cd}\u{8bd5}\u{9884}\u{7f6e}\u{5bfc}\u{5165}\u{ff0c}\u{7136}\u{540e}\u{91cd}\u{8bd5}\u{3002}",
+            zh: "\u{5411}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5bfc}\u{5165}\u{9884}\u{7f6e}\u{5bc6}\u{94a5}\u{5c1a}\u{672a}\u{5b8c}\u{6210}\u{ff0c}\u{56e0}\u{6b64}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{6237}\u{3002}\u{8bf7}\u{91cd}\u{8bd5}\u{9884}\u{7f6e}\u{5bfc}\u{5165}\u{ff0c}\u{7136}\u{540e}\u{91cd}\u{8bd5}\u{3002}",
         },
         recovery: Text {
             en: r#"Importing the provisioned keys into this device's key vault was not finished. Retry the provisioning import, then start over. Nothing was changed."#,
@@ -123,11 +123,11 @@ pub const ROWS: [Row; 9] = [
         custody_failure: CeremonyFailure::Vault(VaultReason::Corrupt),
         ceremony: Text {
             en: r#"This device's key vault is damaged or failed its checks, so no account was created. Nothing was changed."#,
-            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5df2}\u{635f}\u{574f}\u{6216}\u{672a}\u{901a}\u{8fc7}\u{68c0}\u{67e5}\u{ff0c}\u{56e0}\u{6b64}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{53f7}\u{3002}\u{672a}\u{505a}\u{4efb}\u{4f55}\u{66f4}\u{6539}\u{3002}",
+            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5df2}\u{635f}\u{574f}\u{6216}\u{672a}\u{901a}\u{8fc7}\u{68c0}\u{67e5}\u{ff0c}\u{56e0}\u{6b64}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{6237}\u{3002}\u{672a}\u{505a}\u{4efb}\u{4f55}\u{66f4}\u{6539}\u{3002}",
         },
         recovery: Text {
             en: r#"This device's key vault is damaged or failed its checks, so the account was not recovered. Nothing was changed."#,
-            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5df2}\u{635f}\u{574f}\u{6216}\u{672a}\u{901a}\u{8fc7}\u{68c0}\u{67e5}\u{ff0c}\u{56e0}\u{6b64}\u{672a}\u{6062}\u{590d}\u{8d26}\u{53f7}\u{3002}\u{672a}\u{505a}\u{4efb}\u{4f55}\u{66f4}\u{6539}\u{3002}",
+            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5df2}\u{635f}\u{574f}\u{6216}\u{672a}\u{901a}\u{8fc7}\u{68c0}\u{67e5}\u{ff0c}\u{56e0}\u{6b64}\u{672a}\u{6062}\u{590d}\u{8d26}\u{6237}\u{3002}\u{672a}\u{505a}\u{4efb}\u{4f55}\u{66f4}\u{6539}\u{3002}",
         },
         bus: Text {
             en: r#"The key vault of this device is damaged or failed its checks."#,
@@ -144,7 +144,7 @@ pub const ROWS: [Row; 9] = [
         custody_failure: CeremonyFailure::Vault(VaultReason::Permission),
         ceremony: Text {
             en: r#"This device's key vault cannot be used: its files are not safe to use or access was denied. No account was created."#,
-            zh: "\u{65e0}\u{6cd5}\u{4f7f}\u{7528}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{ff1a}\u{5176}\u{6587}\u{4ef6}\u{4e0d}\u{5b89}\u{5168}\u{6216}\u{8bbf}\u{95ee}\u{88ab}\u{62d2}\u{7edd}\u{3002}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{53f7}\u{3002}",
+            zh: "\u{65e0}\u{6cd5}\u{4f7f}\u{7528}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{ff1a}\u{5176}\u{6587}\u{4ef6}\u{4e0d}\u{5b89}\u{5168}\u{6216}\u{8bbf}\u{95ee}\u{88ab}\u{62d2}\u{7edd}\u{3002}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{6237}\u{3002}",
         },
         recovery: Text {
             en: r#"This device's key vault cannot be used: its files are not safe to use or access was denied. Nothing was changed."#,
@@ -165,7 +165,7 @@ pub const ROWS: [Row; 9] = [
         custody_failure: CeremonyFailure::Vault(VaultReason::Locked),
         ceremony: Text {
             en: r#"This device's key vault is locked, or the unlock was cancelled or took too long. Unlock it and try again. No account was created."#,
-            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5df2}\u{9501}\u{5b9a}\u{ff0c}\u{6216}\u{89e3}\u{9501}\u{88ab}\u{53d6}\u{6d88}\u{3001}\u{8d85}\u{65f6}\u{3002}\u{8bf7}\u{89e3}\u{9501}\u{540e}\u{91cd}\u{8bd5}\u{3002}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{53f7}\u{3002}",
+            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5df2}\u{9501}\u{5b9a}\u{ff0c}\u{6216}\u{89e3}\u{9501}\u{88ab}\u{53d6}\u{6d88}\u{3001}\u{8d85}\u{65f6}\u{3002}\u{8bf7}\u{89e3}\u{9501}\u{540e}\u{91cd}\u{8bd5}\u{3002}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{6237}\u{3002}",
         },
         recovery: Text {
             en: r#"This device's key vault is locked, or the unlock was cancelled or took too long. Unlock it and start over. Nothing was changed."#,
@@ -186,7 +186,7 @@ pub const ROWS: [Row; 9] = [
         custody_failure: CeremonyFailure::Vault(VaultReason::Busy),
         ceremony: Text {
             en: r#"This device's key vault is busy right now. Wait a moment and try again. No account was created."#,
-            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5f53}\u{524d}\u{6b63}\u{5fd9}\u{3002}\u{8bf7}\u{7a0d}\u{5019}\u{518d}\u{8bd5}\u{3002}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{53f7}\u{3002}",
+            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{5f53}\u{524d}\u{6b63}\u{5fd9}\u{3002}\u{8bf7}\u{7a0d}\u{5019}\u{518d}\u{8bd5}\u{3002}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{6237}\u{3002}",
         },
         recovery: Text {
             en: r#"This device's key vault is busy right now. Wait a moment and start over. Nothing was changed."#,
@@ -207,15 +207,15 @@ pub const ROWS: [Row; 9] = [
         custody_failure: CeremonyFailure::Vault(VaultReason::PrimaryUnavailable),
         ceremony: Text {
             en: r#"This device's key vault holds no primary key for this account, so no account was created."#,
-            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{4e2d}\u{6ca1}\u{6709}\u{6b64}\u{8d26}\u{53f7}\u{7684}\u{4e3b}\u{5bc6}\u{94a5}\u{ff0c}\u{56e0}\u{6b64}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{53f7}\u{3002}",
+            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{4e2d}\u{6ca1}\u{6709}\u{6b64}\u{8d26}\u{6237}\u{7684}\u{4e3b}\u{5bc6}\u{94a5}\u{ff0c}\u{56e0}\u{6b64}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{6237}\u{3002}",
         },
         recovery: Text {
             en: r#"This device's key vault holds no primary key for this account, so it was not recovered. Nothing was changed."#,
-            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{4e2d}\u{6ca1}\u{6709}\u{6b64}\u{8d26}\u{53f7}\u{7684}\u{4e3b}\u{5bc6}\u{94a5}\u{ff0c}\u{56e0}\u{6b64}\u{672a}\u{6062}\u{590d}\u{8d26}\u{53f7}\u{3002}\u{672a}\u{505a}\u{4efb}\u{4f55}\u{66f4}\u{6539}\u{3002}",
+            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{4e2d}\u{6ca1}\u{6709}\u{6b64}\u{8d26}\u{6237}\u{7684}\u{4e3b}\u{5bc6}\u{94a5}\u{ff0c}\u{56e0}\u{6b64}\u{672a}\u{6062}\u{590d}\u{8d26}\u{6237}\u{3002}\u{672a}\u{505a}\u{4efb}\u{4f55}\u{66f4}\u{6539}\u{3002}",
         },
         bus: Text {
             en: r#"The key vault of this device holds no primary key for this account."#,
-            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{4e2d}\u{6ca1}\u{6709}\u{6b64}\u{8d26}\u{53f7}\u{7684}\u{4e3b}\u{5bc6}\u{94a5}\u{3002}",
+            zh: "\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{7684}\u{5bc6}\u{94a5}\u{4fdd}\u{7ba1}\u{5e93}\u{4e2d}\u{6ca1}\u{6709}\u{6b64}\u{8d26}\u{6237}\u{7684}\u{4e3b}\u{5bc6}\u{94a5}\u{3002}",
         },
     },
     Row {
@@ -228,11 +228,11 @@ pub const ROWS: [Row; 9] = [
         custody_failure: CeremonyFailure::Invalid,
         ceremony: Text {
             en: r#"The setup could not continue because a step was refused. No account was created."#,
-            zh: "\u{8bbe}\u{7f6e}\u{56e0}\u{67d0}\u{4e00}\u{6b65}\u{88ab}\u{62d2}\u{7edd}\u{800c}\u{65e0}\u{6cd5}\u{7ee7}\u{7eed}\u{ff0c}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{53f7}\u{3002}",
+            zh: "\u{8bbe}\u{7f6e}\u{56e0}\u{67d0}\u{4e00}\u{6b65}\u{88ab}\u{62d2}\u{7edd}\u{800c}\u{65e0}\u{6cd5}\u{7ee7}\u{7eed}\u{ff0c}\u{6ca1}\u{6709}\u{521b}\u{5efa}\u{8d26}\u{6237}\u{3002}",
         },
         recovery: Text {
             en: r#"The recovery could not be completed. Check the account code and start over. Nothing was changed."#,
-            zh: "\u{65e0}\u{6cd5}\u{5b8c}\u{6210}\u{6062}\u{590d}\u{3002}\u{8bf7}\u{68c0}\u{67e5}\u{8d26}\u{53f7}\u{5bc6}\u{7801}\u{540e}\u{91cd}\u{65b0}\u{5f00}\u{59cb}\u{3002}\u{672a}\u{505a}\u{4efb}\u{4f55}\u{66f4}\u{6539}\u{3002}",
+            zh: "\u{65e0}\u{6cd5}\u{5b8c}\u{6210}\u{6062}\u{590d}\u{3002}\u{8bf7}\u{68c0}\u{67e5}\u{8d26}\u{6237}\u{7801}\u{540e}\u{91cd}\u{65b0}\u{5f00}\u{59cb}\u{3002}\u{672a}\u{505a}\u{4efb}\u{4f55}\u{66f4}\u{6539}\u{3002}",
         },
         bus: Text {
             en: r#"This device's key vault does not support what was asked."#,

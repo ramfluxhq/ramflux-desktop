@@ -250,7 +250,7 @@ mod shots {
         run.until("the workspace", |r| {
             r.cx.update(|cx| r.shell.read(cx).page()) == Page::Workspace
         });
-        run.click("rail-contacts");
+        run.click("nav-contacts");
         run.until("the notice", |r| r.exists("contacts-floors"));
         run.settle();
         run.shot("pin3_03_floors_full_clearable");

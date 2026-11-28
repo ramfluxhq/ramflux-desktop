@@ -222,6 +222,10 @@ pub struct Node {
     /// Fingerprint of the node's identity key, as shown for out-of-band comparison.
     #[serde(default)]
     pub fingerprint: Option<String>,
+    /// The node's public key as the discovery record gave it: what a first-use
+    /// trust call sends back as the expected key.
+    #[serde(default)]
+    pub public_key: Option<String>,
     /// Where the pin came from.
     pub pin_source: PinSource,
     /// Last observed health.

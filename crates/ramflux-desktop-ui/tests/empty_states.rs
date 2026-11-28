@@ -105,7 +105,8 @@ fn lists_show_loading_then_an_explicit_empty_state(cx: &mut TestAppContext) {
     let loading = Some(tr("list.loading").to_string());
     assert_eq!(label(cx, handle, "stack-list-state"), loading);
     assert_eq!(label(cx, handle, "conversation-list-state"), loading);
-    open_tool(cx, handle, &shell, DockTool::Contacts);
+    // The contact tools live in the Contacts section.
+    click(cx, handle, "nav-contacts");
     assert_eq!(label(cx, handle, "contacts-list-state"), loading);
 
     advance(cx, 500);

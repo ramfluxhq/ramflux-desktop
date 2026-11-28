@@ -367,6 +367,11 @@ impl Workspace {
             cx.observe(&tasks_area, |_, _, cx| cx.notify()),
             cx.subscribe_in(&contacts, window, |this, _, event: &ContactsDockEvent, window, cx| {
                 let ContactsDockEvent::MessageRequested(participant) = event;
+                // From the Contacts section the chat takes the window.
+                this.route = WorkspaceRoute::Messages;
+                this.stack.update(cx, |stack, cx| {
+                    stack.set_filter(context_stack::ListFilter::Messages, cx)
+                });
                 this.open_conversation_with(participant.clone(), window, cx);
             }),
             cx.subscribe_in(

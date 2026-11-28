@@ -179,7 +179,7 @@ mod shots {
                         .is_some()
             })
         });
-        run.click("rail-contacts");
+        run.click("nav-contacts");
         run.settle();
         run.shot("f21_01_request");
         run.click("contacts-auto-accept");

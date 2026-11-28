@@ -161,7 +161,7 @@ fn the_contacts_dock_adds_and_answers_through_the_daemon(cx: &mut TestAppContext
     });
     let (handle, shell) = open_with(cx, options(&path));
     wait_for_workspace(cx, &shell);
-    click(cx, handle, "rail-contacts");
+    click(cx, handle, "nav-contacts");
     wait(cx, "the incoming request", |cx| exists(cx, handle, "contacts-incoming-principal-sam"));
     assert!(
         exists(cx, handle, "contacts-requests-local"),
@@ -226,33 +226,33 @@ fn workspace_readiness_waits_for_context_selection_before_opening_a_dock(cx: &mu
     let (handle, shell) = staged_workspace(cx);
     wait_for_workspace(cx, &shell);
     assert!(with_store(cx, &shell, |s| s.is_listed(Listing::Contexts)));
-    click(cx, handle, "rail-contacts");
+    click(cx, handle, "rail-objects");
     advance(cx, 1_000);
-    assert!(exists(cx, handle, "dock-content-contacts"), "initial selection cannot close it");
+    assert!(exists(cx, handle, "dock-content-objects"), "initial selection cannot close it");
 }
 
 #[gpui_kit::test]
-fn initial_context_selection_keeps_a_summoned_contacts_dock_open(cx: &mut TestAppContext) {
+fn the_header_rail_waits_for_a_chat_and_a_summoned_dock_survives_the_initial_selection(
+    cx: &mut TestAppContext,
+) {
     let (handle, shell) = staged_workspace(cx);
-    // Deliberately use the old page-only readiness condition: a user can
-    // open Contacts before the delayed context listings arrive.
     wait(cx, "workspace page", |cx| page(cx, &shell) == Page::Workspace);
     let workspace = workspace(cx, &shell);
     assert!(cx.update(|cx| workspace.read(cx).current_context().is_none()));
-    click(cx, handle, "rail-contacts");
-    assert!(exists(cx, handle, "dock-content-contacts"));
-    assert!(cx.update(|cx| workspace.read(cx).pinned_tool().is_none()));
+    assert!(!exists(cx, handle, "rail-objects"), "with no chat selected the header has no rail");
 
     advance(cx, 1_000);
     assert!(with_store(cx, &shell, |s| s.is_listed(Listing::Contexts)));
     let selected = cx.update(|cx| workspace.read(cx).current_context().cloned());
     assert!(selected.is_some(), "the delayed listing selected the initial context");
-    assert!(exists(cx, handle, "dock-content-contacts"), "initial selection keeps the dock open");
+    click(cx, handle, "rail-objects");
+    assert!(exists(cx, handle, "dock-content-objects"));
+    assert!(cx.update(|cx| workspace.read(cx).pinned_tool().is_none()));
 
     let next = with_store(cx, &shell, |s| {
         s.contexts().find(|c| Some(&c.id) != selected.as_ref()).map(|c| c.id.clone())
     })
     .expect("another context");
     show_context(cx, handle, &shell, next.as_str());
-    assert!(!exists(cx, handle, "dock-content-contacts"), "a later context switch closes it");
+    assert!(!exists(cx, handle, "dock-content-objects"), "a later context switch closes it");
 }

@@ -19,6 +19,7 @@ fn node(id: &str, pin_source: PinSource, confirmed: bool) -> Node {
         id: NodeId::new(id),
         endpoints: vec!["quic://node.example.test:7443".to_owned()],
         fingerprint: Some("SHA256:aa".to_owned()),
+        public_key: Some("key-aa".to_owned()),
         pin_source,
         health: NodeHealth::Unknown,
         capabilities: Vec::new(),

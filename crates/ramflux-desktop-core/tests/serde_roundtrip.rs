@@ -393,6 +393,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
             id: NodeId::new("n-1"),
             endpoints: vec!["quic://node.example.test:7443".to_owned()],
             fingerprint: Some("SHA256:0011".to_owned()),
+            public_key: None,
             pin_source: PinSource::Invite,
             health: NodeHealth::Healthy,
             capabilities: vec!["relay".to_owned()],

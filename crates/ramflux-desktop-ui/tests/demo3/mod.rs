@@ -170,7 +170,7 @@ fn contacts<H: Host>(demo: &mut Demo3<'_, H>, notes: &mut Notes) -> Result<(), S
     notes.add(format!("Alice's desktop knows Orbit as {kind:?}"));
     let desk = demo.desks[0].as_ref().ok_or("desktop not open")?;
     if !desk.exists(demo.host, &row) {
-        desk.click(demo.host, None, "rail-contacts")?;
+        desk.click(demo.host, None, "nav-contacts")?;
     }
     demo.shots(0, "d3_02_contacts", notes)?;
     Ok(())
@@ -184,7 +184,7 @@ fn conversation<H: Host>(demo: &mut Demo3<'_, H>, notes: &mut Notes) -> Result<(
     let row = format!("contacts-{orbit}");
     let desk = demo.desks[0].as_ref().ok_or("desktop not open")?;
     if !desk.exists(demo.host, &row) {
-        desk.click(demo.host, None, "rail-contacts")?;
+        desk.click(demo.host, None, "nav-contacts")?;
     }
     desk.click(demo.host, Some(&row), "message")?;
     if !desk.draft_open(demo.host) {

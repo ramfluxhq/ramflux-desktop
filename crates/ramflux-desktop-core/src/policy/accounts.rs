@@ -48,6 +48,7 @@ pub(super) fn decide(p: &Policy<'_>, kind: &IntentKind) -> Option<Result<Decisio
                         "node_id": node_id,
                         "pin_source": pin_source,
                         "fingerprint": node.fingerprint,
+                        "public_key": node.public_key,
                     }),
                 ))
             })

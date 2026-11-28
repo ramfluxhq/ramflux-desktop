@@ -109,8 +109,8 @@ fn floors_text(retained: u32, clearable: u32, locale: &str) -> String {
 }
 
 fn open_contacts(cx: &mut TestAppContext, world: &World) {
-    click(cx, world.handle, "rail-contacts");
-    assert!(exists(cx, world.handle, "dock-content-contacts"));
+    click(cx, world.handle, "nav-contacts");
+    assert!(exists(cx, world.handle, "dock-contacts"));
 }
 
 fn sent(world: &World, method: &str) -> Vec<Value> {
