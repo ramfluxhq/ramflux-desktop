@@ -470,7 +470,9 @@ impl RenderOnce for MomentView {
             MomentKind::Call(_) => call::render(&row.refs, &sink, cx).into_any_element(),
             MomentKind::NameChange(p) => name_change::render(p, &row, cx).into_any_element(),
             MomentKind::GroupRename(p) => group_rename::render(p, &row, cx).into_any_element(),
-            MomentKind::MlsService(line) => mls_group::render(line, cx).into_any_element(),
+            MomentKind::MlsService(line) => {
+                mls_group::render(line, &moment.context_id, &sink, cx).into_any_element()
+            }
         };
         // A task event, a name change, a group rename and a membership record
         // from a signed group state are one compact line each: they carry

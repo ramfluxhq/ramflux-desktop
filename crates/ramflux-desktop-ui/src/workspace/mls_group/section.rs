@@ -386,7 +386,9 @@ impl Render for MlsGroupsSection {
                 cx,
             ))
             .children(pending.into_iter().map(|record| {
-                div()
+                let online = record.reason
+                    == ramflux_desktop_core::mls_group::PendingReason::AwaitingMemberOnline;
+                v_flex()
                     .id(domain_id("mls-pending", &ContextId::new(record.request_id.clone())))
                     .test_support()
                     .role(gpui_kit::Role::Status)
@@ -400,6 +402,7 @@ impl Render for MlsGroupsSection {
                         Some(at) => i18n::join(&tr("group.join.pending.row"), &when(at)),
                         None => tr("group.join.pending.row"),
                     })
+                    .children(online.then(|| tr("group.join.pending.online_note")))
             }))
             .children(state)
             .child(div().flex_1().min_h_0().child(rows_list))

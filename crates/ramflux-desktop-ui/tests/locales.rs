@@ -305,7 +305,7 @@ fn every_key_used_in_code_exists() {
 /// Prefixes the code builds keys under at run time (`format!` with an enum
 /// key, or a reason code from the SDK), so their keys are used even when no
 /// literal names them.
-const DYNAMIC_PREFIXES: [&str; 12] = [
+const DYNAMIC_PREFIXES: [&str; 13] = [
     "agents.unavailable.",
     "backend.backup.",
     "backend.failure.action.",
@@ -316,6 +316,8 @@ const DYNAMIC_PREFIXES: [&str; 12] = [
     "group.error.",
     "group.join.refused.",
     "group.send.",
+    // The text of a rejoin reason comes from the core (`RejoinReason::key`).
+    "group.warning.rejoin_needed.",
     "sections.tasks.",
     "settings.section.",
     "theme.family.",

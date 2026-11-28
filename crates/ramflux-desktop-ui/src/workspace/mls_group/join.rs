@@ -269,6 +269,15 @@ impl Render for MlsJoin {
             })) => Some(group_id.clone()),
             _ => None,
         };
+        // The requester of a group that admits only while somebody is online
+        // learns it (no action).
+        let online_note = matches!(
+            &shown,
+            Shown::Outcome(JoinOutcome::Pending {
+                reason: PendingReason::AwaitingMemberOnline,
+                ..
+            })
+        );
         let this = cx.weak_entity();
         let join = Button::new("mls-join-submit")
             .design_primary(cx)
@@ -314,6 +323,15 @@ impl Render for MlsJoin {
                     .text_size(text_secondary())
                     .text_color(if bad { danger } else { muted })
                     .child(text)
+            }))
+            .children(online_note.then(|| {
+                div()
+                    .id("mls-join-online-note")
+                    .role(Role::Status)
+                    .test_support()
+                    .text_size(text_secondary())
+                    .text_color(muted)
+                    .child(tr("group.join.pending.online_note"))
             }));
         crate::modal::Modal::new(
             "mls-join",

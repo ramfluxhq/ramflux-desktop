@@ -204,7 +204,7 @@ pub fn banners(
                 Some(
                     Button::new(gpui_kit::SharedString::from(format!("mls-banner-show-{ix}")))
                         .design_secondary(cx)
-                        .design_label(tr("group.warning.undecryptable.show"))
+                        .design_label(tr("group.warning.undecryptable_show"))
                         .on_click(move |_, window, cx| {
                             sink.emit(
                                 UiEventKind::MlsPanelRequested {

@@ -19,7 +19,7 @@ use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_fl
 use gpui_kit::prelude::*;
 use gpui_kit::{AnyElement, App, Entity, IntoElement, Role, SharedString, div};
 use ramflux_desktop_core::mls_group::{self as mls, ReadOnly};
-use ramflux_desktop_core::{Context, Store, UiEventKind};
+use ramflux_desktop_core::{Context, Store, Timestamp, UiEventKind};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_secondary};
 
@@ -145,6 +145,53 @@ pub fn read_only_banner(store: &Store, group_id: &str, cx: &App) -> Option<AnyEl
             .text_size(text_secondary())
             .text_color(cx.theme().muted_foreground)
             .child(tr(key))
+            .into_any_element(),
+    )
+}
+
+/// The lines above the composer about what a post costs and when it goes out
+/// (common 2.8): the post quota (on the first day, or when a fifth or less is
+/// left) and the privacy-delay ETA (a send time in the future). They read the
+/// store; the quota is never decremented here, it changes only when the next
+/// group read arrives. `None` while the group takes no posts or has neither.
+pub fn quota_strip(store: &Store, group_id: &str, now: Timestamp, cx: &App) -> Option<AnyElement> {
+    if store.mls_read_only(group_id).is_some() {
+        return None;
+    }
+    let summary = store.mls_group(group_id)?;
+    // With nothing left the rate lock already speaks for the composer.
+    let post = summary.quota_post.as_ref().filter(|q| super::quota_due(q));
+    let eta = super::privacy_eta(&summary.privacy_delay, now);
+    if post.is_none() && eta.is_none() {
+        return None;
+    }
+    let muted = cx.theme().muted_foreground;
+    Some(
+        v_flex()
+            .id("mls-quota-strip")
+            .test_support()
+            .w_full()
+            .px(gpui_kit::rems(24.0 / 15.0))
+            .gap(space(1.))
+            .text_size(ramflux_desktop_navigation::scale::text_caption())
+            .text_color(muted)
+            .children(post.map(|q| {
+                div().id("mls-quota-post").role(Role::Status).child(super::post_quota_text(q))
+            }))
+            // With nothing left the rate lock speaks for the composer; this
+            // line names the reset time when the SDK gave one.
+            .children(post.and_then(|q| q.resets_at.filter(|_| q.remaining == 0)).map(|at| {
+                div().id("mls-quota-resets").role(Role::Status).child(crate::i18n::tr_args(
+                    "group.quota.resets",
+                    &[("time", &crate::i18n::time_of_day(at))],
+                ))
+            }))
+            .children(eta.map(|at| {
+                div().id("mls-privacy-eta").role(Role::Status).child(crate::i18n::tr_args(
+                    "group.privacy_delay.eta",
+                    &[("time", &crate::i18n::time_of_day(at))],
+                ))
+            }))
             .into_any_element(),
     )
 }

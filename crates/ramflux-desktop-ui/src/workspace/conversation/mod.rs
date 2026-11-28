@@ -71,6 +71,9 @@ pub struct Conversation {
     /// The wait until a used-up daily limit of an MLS group resets: it only
     /// redraws, never sends. Dropping it cancels it.
     rate_timer: Option<(ramflux_desktop_core::Timestamp, gpui_kit::Task<()>)>,
+    /// The wake for the end of group commit pacing (an MLS group shown): it
+    /// only redraws, so the admin entries come back; nothing is called.
+    paced_timer: Option<(ramflux_desktop_core::Timestamp, gpui_kit::Task<()>)>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -159,6 +162,7 @@ impl Conversation {
             scroller,
             older_asked: None,
             rate_timer: None,
+            paced_timer: None,
             view: ViewState::default(),
             highlighted: None,
             composer,
@@ -304,6 +308,33 @@ impl Conversation {
                     this.update(cx, |field, cx| field.rate_lock_elapsed(cx)).ok();
                 });
                 self.rate_timer = Some((until, task));
+            }
+            Some(_) => {}
+        }
+    }
+
+    /// Arms one wake for the end of group commit pacing (`until`), or drops
+    /// it. The wake redraws every view; it calls nothing.
+    fn follow_paced(
+        &mut self,
+        until: Option<ramflux_desktop_core::Timestamp>,
+        now: ramflux_desktop_core::Timestamp,
+        cx: &mut Context<Self>,
+    ) {
+        match until {
+            None => self.paced_timer = None,
+            Some(until) if self.paced_timer.as_ref().map(|(at, _)| *at) != Some(until) => {
+                let wait = std::time::Duration::from_millis(until.saturating_since(now) + 50);
+                let task = cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(wait).await;
+                    this.update(cx, |field, cx| {
+                        field.paced_timer = None;
+                        cx.refresh_windows();
+                        cx.notify();
+                    })
+                    .ok();
+                });
+                self.paced_timer = Some((until, task));
             }
             Some(_) => {}
         }
@@ -712,6 +743,9 @@ impl Render for Conversation {
         let mls_banner = mls_group
             .as_deref()
             .and_then(|g| super::mls_group::chrome::read_only_banner(store, g, cx));
+        let mls_banners = mls_group.as_deref().zip(context_sink.clone()).and_then(|(g, sink)| {
+            super::mls_group::banners::banners(store, self.store.clone(), g, sink, cx)
+        });
         let mls_strip = mls_group.as_deref().zip(context_sink.clone()).and_then(|(g, sink)| {
             super::mls_group::chrome::mention_strip(store, self.store.clone(), g, sink, cx)
         });
@@ -846,6 +880,9 @@ impl Render for Conversation {
             .as_deref()
             .and_then(|g| self.store.read(cx).store().mls_rate_locked_until(g, now));
         self.follow_rate_lock(rate_until, now, cx);
+        let paced_until =
+            mls_group.as_deref().and_then(|g| self.store.read(cx).store().mls_paced_until(g, now));
+        self.follow_paced(paced_until, now, cx);
         let rate_tip = rate_until.filter(|_| mls_banner.is_none()).map(|until| {
             div()
                 .id("mls-rate-limit")
@@ -861,6 +898,9 @@ impl Render for Conversation {
                 ))
         });
         let mls_strip = mls_strip.filter(|_| rate_tip.is_none());
+        let mls_quota = mls_group.as_deref().filter(|_| mls_banner.is_none()).and_then(|g| {
+            super::mls_group::chrome::quota_strip(self.store.read(cx).store(), g, now, cx)
+        });
         let composer = (mls_banner.is_none() && rate_tip.is_none()).then(|| self.composer.clone());
         let status = self.status.clone();
         v_flex()
@@ -871,12 +911,13 @@ impl Render for Conversation {
             .bg(cx.theme().background)
             .map(|field| match draft {
                 Some(draft) => field.children(tools_row).child(draft),
-                None => field.child(header).children(status).child(body),
+                None => field.child(header).children(status).children(mls_banners).child(body),
             })
             .children(strip)
             .children(mls_banner)
             .children(mls_strip)
             .children(rate_tip)
+            .children(mls_quota)
             // Board H01: the composer keeps 24 px gutters when the pane is
             // narrower than its reading column (a tool panel open).
             .children(

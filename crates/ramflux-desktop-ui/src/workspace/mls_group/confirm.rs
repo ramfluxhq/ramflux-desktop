@@ -62,13 +62,22 @@ struct Text {
     hint: bool,
 }
 
+/// The name a confirmation shows: the display name (bidi-isolated), or "this
+/// member" when there is none (never an id).
+fn who(display: Option<&str>) -> SharedString {
+    match display.filter(|d| !d.is_empty()) {
+        Some(name) => name_text(Some(name), false),
+        None => tr("group.member.this"),
+    }
+}
+
 /// A person as a confirmation names them.
 fn person(store: &Store, group: &str, anchor: &OpaqueId) -> (SharedString, bool) {
     match store.mls_members(group).and_then(|p| p.rows.get(anchor.expose())) {
         Some(row) => {
-            (super::member_name(row), row.ai_flag || store.mls_is_ai(group, anchor.expose()))
+            (who(row.display.as_deref()), row.ai_flag || store.mls_is_ai(group, anchor.expose()))
         }
-        None => (name_text(None, false), store.mls_is_ai(group, anchor.expose())),
+        None => (who(None), store.mls_is_ai(group, anchor.expose())),
     }
 }
 
@@ -81,9 +90,9 @@ fn requester(store: &Store, group: &str, id: &OpaqueId) -> (SharedString, bool, 
             let expires = request
                 .expires_at
                 .or_else(|| request.requested_at.map(|at| Timestamp(at.0 + REQUEST_LIFETIME_MS)));
-            (name_text(request.display.as_deref(), false), ai, expires)
+            (who(request.display.as_deref()), ai, expires)
         }
-        None => (name_text(None, false), false, None),
+        None => (who(None), false, None),
     }
 }
 

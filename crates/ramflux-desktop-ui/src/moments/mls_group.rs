@@ -7,15 +7,20 @@
 //! Names are bidi-isolated, a missing name reads "Member" (never the
 //! anchor), and the local account reads "You".
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
+use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, IntoElement, SharedString, div};
-use ramflux_desktop_core::mls_group::{MlsName, MlsServiceLine};
+use ramflux_desktop_core::ContextId;
+use ramflux_desktop_core::UiEventKind;
+use ramflux_desktop_core::mls_group::{MlsName, MlsPanel, MlsServiceLine, UndoOffer};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption};
 
+use crate::bubble::EventSink;
 use crate::i18n::{tr, tr_args, tr_count};
 use crate::workspace::mls_group::name_text;
 
@@ -104,18 +109,71 @@ fn icon(line: &MlsServiceLine) -> IconName {
     }
 }
 
-/// Renders a service line: a centred, quiet sentence with a small icon.
-pub fn render(line: &MlsServiceLine, cx: &App) -> impl IntoElement {
-    let text = sentence(line);
+/// Renders a service line: a centred, quiet sentence with a small icon. The
+/// line of a commit row also carries the "Undone" mark of a row a void row
+/// undid, and the "Undo this change" entry of the head commit row (it opens
+/// the confirmation; nothing is sent by the entry).
+pub fn render(
+    line: &MlsServiceLine,
+    context: &ContextId,
+    sink: &EventSink,
+    cx: &App,
+) -> impl IntoElement {
+    let (inner, voided, undo) = match line {
+        MlsServiceLine::Commit { line, voided, undo } => (line.as_ref(), *voided, *undo),
+        other => (other, false, UndoOffer::No),
+    };
+    let text = sentence(inner);
+    let group = ramflux_desktop_core::mls_group::group_of(context).unwrap_or_default().to_owned();
+    let muted = cx.theme().muted_foreground;
+    let action = match undo {
+        UndoOffer::No => None,
+        UndoOffer::Offer { log_seq } | UndoOffer::Busy { log_seq } => {
+            let sink = sink.clone();
+            let busy = matches!(undo, UndoOffer::Busy { .. });
+            Some(
+                Button::new("mls-undo-change")
+                    .design_quiet(cx)
+                    .design_label(tr("group.void.action"))
+                    .design_disabled(busy, cx)
+                    .on_click(move |_, window, cx| {
+                        sink.emit(
+                            UiEventKind::MlsPanelRequested {
+                                panel: MlsPanel::ConfirmVoid { group_id: group.clone(), log_seq },
+                            },
+                            window,
+                            cx,
+                        );
+                    })
+                    .into_any_element(),
+            )
+        }
+        UndoOffer::Undoing { .. } => Some(
+            div()
+                .id("mls-undo-undoing")
+                .role(gpui_kit::Role::Status)
+                .text_color(muted)
+                .child(tr("group.void.undoing"))
+                .into_any_element(),
+        ),
+    };
     h_flex()
         .id("mls-service-line")
-        .aria_label(text.clone())
+        .aria_label(if voided {
+            crate::i18n::clause(&text, &tr("group.void.undone"))
+        } else {
+            text.clone()
+        })
         .w_full()
         .justify_center()
         .gap(space(2.))
         .text_size(text_caption())
-        .text_color(cx.theme().muted_foreground)
-        .child(Icon::new(icon(line)).xsmall())
+        .text_color(muted)
+        .child(Icon::new(icon(inner)).xsmall())
         .child(div().min_w_0().child(text))
+        .children(
+            voided.then(|| div().id("mls-undone-mark").flex_none().child(tr("group.void.undone"))),
+        )
+        .children(action)
         .test_support()
 }
