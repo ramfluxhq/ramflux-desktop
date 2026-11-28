@@ -72,6 +72,7 @@ pub mod mock_agents;
 pub mod mock_cards;
 pub mod mock_ceremony;
 pub mod mock_mls;
+pub mod mock_mls_admin;
 pub mod mock_recovery;
 pub mod mock_source;
 pub mod player;

@@ -1,8 +1,9 @@
-// s12 MLS groups (MLS GUI batch M2, fixtures F2-1 to F2-10). The groups are
-// served by the handler `mock_mls` (crates/ramflux-desktop-test), not by the
-// timeline: this file only sets the account up. The handler is active only
-// while this scenario is loaded, and counts every `mls_group.*` call (the
-// developer panel shows "mock calls: <method> N").
+// s12 MLS groups (MLS GUI batch M2, fixtures F2-1 to F2-10, and batch M3,
+// fixtures F3-1 to F3-13). The groups are served by the handlers `mock_mls`
+// and `mock_mls_admin` (crates/ramflux-desktop-test), not by the timeline:
+// this file only sets the account up. The handlers are active only while this
+// scenario is loaded, and count every `mls_group.*` call (the developer panel
+// shows "mock calls: <method> N").
 //
 // How to reach each fixture (Groups route in the rail):
 //   F2-1  Groups list: 120 groups in three pages of 50 (cursors l2, l3); page 2
@@ -40,6 +41,69 @@
 //   F2-10 Delete for everyone on an own posted message (send one first):
 //         "Deleting..." for 2 s, then the tombstone (an event repeats it once).
 //         The second delete of the session answers not_author.
+//
+// M3 (admin and edge states). Opening a group asks for a refresh: the FIRST
+// refresh of a group brings its M3 timed events (below); the SECOND one (press
+// Refresh again, at least 5 s later) brings the F2-7 news of Design and Book
+// club, so the two walks do not trample each other (F2-7 now needs two
+// refreshes). The list keeps its 120 rows: five fillers became the M3 groups
+// "Queue", "Open house", "Late catch-up", "Catch-up zero" and "Stale head",
+// which sit right after "Design". Quotas and privacy delays are real now
+// (Design: 60 of 500 posts and 2 of 20 commits; Neighbours: first day, 3 of
+// 20, privacy delay armed; Scale: privacy ETA 2 minutes after the start).
+// Design's roster: Ana and Chen are admins; Ben, Scout (agent), Dana and Eve
+// are members. Book club has 6 members (Ana is member 3, Chen member 4).
+// Head commit of Design: the name change at 250 (older membership row at 240)
+// until the F2-7 news add newer commits.
+//   F3-1  Design, group info, "Join requests": 7 rows (Ana, Ben, Chen, Dana,
+//         Eve, Scout, one with no name), then Fay arrives by event 4 s after
+//         the first listing (once). Approve Ana: committed, joined row after
+//         1 s. Approve Ben: request_not_found. Decline anyone: declined after
+//         1 s. Approve Dana: paced for 5 s; Dana expires 30 s after the
+//         first listing. Approve Eve: the reply takes 3 s (close the screen
+//         at once, reopen). Counters: approve 4, decline 1.
+//   F3-2  Queue, "Join requests": 200 rows and a cursor, then 230; page 2
+//         fails once (host_unreachable), "Try again" loads it.
+//   F3-3  Design, Members: Make Ben admin (his `membership` event arrives
+//         0.5 s BEFORE the reply), Make Chen member, Remove Dana (reply
+//         after 3 s), Ban Eve. The owner row and your own row have no menu.
+//         (A removal of the owner row cannot be sent: the policy hides it.)
+//   F3-4  Book club, Members (this account is an admin): Ana, a plain member,
+//         offers Remove and Ban; Remove Ana answers not_admin{required:
+//         admin} and the next group read says this account is a member.
+//   F3-5  Design: Remove Dana (3 s), then try Ban Eve and Approve Fay.
+//   F3-6  Design, Group settings: rename, a 65-character name, an unchanged
+//         name, approval off (confirmation with the hint; settings event and
+//         the admission warning follow), approval on. Neighbours, info: pick
+//         each notification mode (None fails with a generic error).
+//   F3-7  Book club, first refresh: catch-up progress 0 to 120 for 2 s, idle
+//         after 5 s; Skip answers after 3 s. "Late catch-up": Skip answers
+//         after 3 s and an idle event arrives 1 s after the call (the reply
+//         changes nothing). "Catch-up zero": the total is 0 (indeterminate).
+//   F3-8  Design, first refresh: fork_alarm, rejoin_needed for pruned,
+//         gate_rejected, apply_failed, welcome_expired, state_lost and an
+//         unknown reason, undecryptable (12 from 140), admission_needs_online,
+//         host_unusual, head_commit_rejected (250) and an unknown code, each
+//         active 3 s then cleared, 4 s apart; at the end three stay (fork,
+//         undecryptable, host_unusual: two banners and "+1"). A group read
+//         issued while fork_alarm is active is answered after it is cleared
+//         and still lists it (the stale read). Neighbours (member), first
+//         refresh: head_commit_rejected, which a member never sees.
+//   F3-9  Design (post and commit quota lines), Neighbours (first-day line,
+//         privacy row), Scale (privacy ETA). Send a message: the line changes
+//         only after the next group read.
+//   F3-10 Design, history: "Undo this change" on the head commit only;
+//         committed then a void row. "Stale head": Undo is refused with
+//         void_not_head (head 252) and the newer commit arrives. The
+//         head_commit_rejected banner action opens the same confirmation.
+//   F3-11 Book club, Members: Remove Chen (reply after 3 s); 1 s after the
+//         call this account is removed (read only).
+//   F3-12 Lock the app while Approve (Design, 3 s) or Skip (Book club, 3 s)
+//         runs, and unlock after 5 s: nothing survives. A second mock
+//         account is not offered: the mock source serves one MLS handler.
+//   F3-13 "Open house" (admin, approval off): admission banner and info row
+//         with "Get invite link" and "Open agents". The requester side is
+//         the M2 link rfinv-online.
 #![enable(implicit_some, unwrap_variant_newtypes)]
 (
     name: "s12_mls_groups",

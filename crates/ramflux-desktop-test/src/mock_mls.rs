@@ -30,11 +30,13 @@ use ramflux_desktop_core::mls_group::{
     Author, CatchUp, DeleteResult, GroupEventKind, HistoryDirection, Invite, InviteLink,
     JoinOutcome, JoinRecord, JoinRefusal, LastPost, LeaveResult, MemberRow, MembershipChange,
     MembershipKind, MlsGroupSummary, MlsRole, NotSentReason, PendingReason, Post, PostBody,
-    PostKind, PostState, PrivacyDelay, PushSetting, QueueReason, SendState, SettingsChange,
+    PostKind, PostState, PrivacyDelay, PushSetting, QueueReason, Quota, SendState, SettingsChange,
     Warning,
 };
 use ramflux_desktop_core::{DomainEvent, JsonValue, Timestamp, methods};
 use serde_json::json;
+
+use crate::mock_mls_admin::AdminState;
 
 /// The scenario that turns the handler on.
 pub const SCENARIO: &str = "s12_mls_groups";
@@ -49,7 +51,7 @@ const LIST_PAGE: usize = 50;
 const MEMBERS_PAGE: usize = 200;
 
 /// Answers after this many milliseconds.
-type Answer = (u64, DomainEvent);
+pub(crate) type Answer = (u64, DomainEvent);
 
 /// The answers of the demo MLS groups.
 #[derive(Debug, Default)]
@@ -68,12 +70,17 @@ pub struct MockMls {
     invites: u64,
     revoked: BTreeSet<String>,
     read: BTreeMap<String, u64>,
+    /// How many times each group was refreshed: the first refresh brings the
+    /// M3 events of the group, the second the M2 news (F2-7).
+    refresh_count: BTreeMap<String, u64>,
+    /// The admin and edge states (MLS GUI batch M3, fixtures F3-1 to F3-13).
+    pub(crate) admin: AdminState,
 }
 
 /// A fixed set of neutral names.
 const NAMES: [&str; 5] = ["Ana", "Ben", "Chen", "Dana", "Scout"];
 
-fn author(anchor: &str, display: Option<&str>, ai: bool, me: bool) -> Author {
+pub(crate) fn author(anchor: &str, display: Option<&str>, ai: bool, me: bool) -> Author {
     Author {
         anchor: anchor.to_owned(),
         display: display.map(str::to_owned),
@@ -119,9 +126,15 @@ fn all_ids() -> Vec<String> {
         "g-bookclub".to_owned(),
         "g-scale".to_owned(),
     ];
-    ids.extend((1..=GROUPS - 4).map(|n| format!("g-fill-{n:03}")));
+    // The M3 groups take the places of the first five fillers, so the list
+    // keeps its 120 rows.
+    ids.extend(M3_GROUPS.iter().map(|g| (*g).to_owned()));
+    ids.extend((M3_GROUPS.len() + 1..=GROUPS - 4).map(|n| format!("g-fill-{n:03}")));
     ids
 }
+
+/// The groups of the admin and edge states (M3), after the four named ones.
+pub(crate) const M3_GROUPS: [&str; 5] = ["g-queue", "g-open", "g-latecatch", "g-catch0", "g-stale"];
 
 /// How many posts a group's history has.
 fn post_count(group: &str) -> u64 {
@@ -130,6 +143,8 @@ fn post_count(group: &str) -> u64 {
         "g-scale" => 20_000,
         "g-neighbours" => 60,
         "g-bookclub" => 24,
+        "g-stale" => 250,
+        "g-queue" | "g-open" | "g-latecatch" | "g-catch0" => 30,
         _ => 12,
     }
 }
@@ -139,8 +154,9 @@ fn member_count(group: &str) -> u32 {
     match group {
         "g-design" => 12,
         "g-neighbours" => 987,
-        "g-bookclub" => 3,
+        "g-bookclub" => 6,
         "g-scale" => 1_000,
+        "g-queue" | "g-open" | "g-latecatch" | "g-catch0" | "g-stale" => 12,
         other => 5 + u32::try_from(group_index(other).unwrap_or(0) % 30).unwrap_or(0),
     }
 }
@@ -151,6 +167,11 @@ fn name_of(group: &str) -> String {
         "g-neighbours" => "Neighbours".to_owned(),
         "g-bookclub" => "Book club".to_owned(),
         "g-scale" => "Scale test".to_owned(),
+        "g-queue" => "Queue".to_owned(),
+        "g-open" => "Open house".to_owned(),
+        "g-latecatch" => "Late catch-up".to_owned(),
+        "g-catch0" => "Catch-up zero".to_owned(),
+        "g-stale" => "Stale head".to_owned(),
         other => match group_index(other) {
             Some(n) => format!("Group {n:03}"),
             None => other.to_owned(),
@@ -219,6 +240,38 @@ fn post_at(group: &str, log_seq: u64, now: Timestamp) -> Post {
                     None,
                 );
             }
+            // F3-10: an older membership row, then the head commit (a name
+            // change) at 250.
+            240 => {
+                return base(
+                    PostKind::Membership,
+                    PostBody::Membership {
+                        changes: vec![MembershipChange {
+                            kind: MembershipKind::Joined,
+                            anchor: "anc-late".to_owned(),
+                            display: Some("Fay".to_owned()),
+                            ai_flag: false,
+                            role: None,
+                            is_me: false,
+                        }],
+                        by: Some(author("anc-ana", Some("Ana"), false, false)),
+                    },
+                    None,
+                );
+            }
+            250 => {
+                return base(
+                    PostKind::Settings,
+                    PostBody::Settings {
+                        change: SettingsChange {
+                            name: Some("Design studio".to_owned()),
+                            approval: None,
+                        },
+                        by: Some(author("anc-ana", Some("Ana"), false, false)),
+                    },
+                    None,
+                );
+            }
             90 => {
                 return base(
                     PostKind::Void,
@@ -248,6 +301,17 @@ fn post_at(group: &str, log_seq: u64, now: Timestamp) -> Post {
             _ => {}
         }
     }
+    // "Stale head": its newest commit is the name change at 250.
+    if group == "g-stale" && log_seq == 250 {
+        return base(
+            PostKind::Settings,
+            PostBody::Settings {
+                change: SettingsChange { name: Some("Stale head".to_owned()), approval: None },
+                by: Some(author("anc-ana", Some("Ana"), false, false)),
+            },
+            None,
+        );
+    }
     let who = cast(log_seq);
     let text = if who.ai_flag {
         format!("Scout: summary {log_seq}")
@@ -270,29 +334,62 @@ fn summary(group: &str, now: Timestamp, extra_unread: bool) -> MlsGroupSummary {
         members,
         leaves: 0,
         agents: u32::from(design),
-        approval: design || group == "g-bookclub",
+        approval: design || matches!(group, "g-bookclub" | "g-queue" | "g-stale"),
         my_role: match group {
-            "g-design" => MlsRole::Owner,
-            "g-bookclub" => MlsRole::Admin,
+            "g-design" | "g-queue" | "g-stale" => MlsRole::Owner,
+            "g-bookclub" | "g-open" => MlsRole::Admin,
             _ => MlsRole::Member,
         },
         host_node: HOST.to_owned(),
         push: PushSetting::MentionsReplies,
-        catch_up: (group == "g-bookclub").then(|| CatchUp {
-            state: "running".to_owned(),
-            done: 40,
-            total: 120,
+        catch_up: match group {
+            "g-bookclub" => Some(CatchUp { state: "running".to_owned(), done: 40, total: 120 }),
+            "g-latecatch" => Some(CatchUp { state: "running".to_owned(), done: 10, total: 100 }),
+            // A total of 0 reads as indeterminate (F3-7).
+            "g-catch0" => Some(CatchUp { state: "running".to_owned(), done: 0, total: 0 }),
+            _ => None,
+        },
+        privacy_delay: match group {
+            "g-neighbours" => PrivacyDelay::Armed,
+            "g-scale" => PrivacyDelay::Waiting(Timestamp(now.0 + 120_000)),
+            _ => PrivacyDelay::None,
+        },
+        // F3-9: real limits. Design and Neighbours are near their limits,
+        // Scale is far from it; the rest show no line.
+        quota_post: Some(match group {
+            "g-design" => Quota { limit: 500, remaining: 60, first_day: false, resets_at: None },
+            "g-neighbours" => Quota { limit: 20, remaining: 3, first_day: true, resets_at: None },
+            "g-scale" => Quota { limit: 500, remaining: 400, first_day: false, resets_at: None },
+            _ => Quota { limit: 500, remaining: 480, first_day: false, resets_at: None },
         }),
-        privacy_delay: PrivacyDelay::None,
-        quota_post: None,
-        quota_commit: None,
+        quota_commit: Some(match group {
+            "g-design" => Quota { limit: 20, remaining: 2, first_day: false, resets_at: None },
+            _ => Quota { limit: 20, remaining: 19, first_day: false, resets_at: None },
+        }),
         last_log_seq: posts,
-        warnings: vec![Warning {
-            code: "host_ip_visible".to_owned(),
-            params: json!({ "host": HOST }),
-            cleared: false,
-        }],
-        last_activity_at: Some(ts(now, i64::try_from(order).unwrap_or(0) * 600_000 + 60_000)),
+        warnings: {
+            let mut warnings = vec![Warning {
+                code: "host_ip_visible".to_owned(),
+                params: json!({ "host": HOST }),
+                cleared: false,
+            }];
+            if group == "g-open" {
+                warnings.push(Warning {
+                    code: "admission_needs_online".to_owned(),
+                    params: json!({}),
+                    cleared: false,
+                });
+            }
+            warnings
+        },
+        last_activity_at: Some(ts(
+            now,
+            match M3_GROUPS.iter().position(|g| *g == group) {
+                // Just after "Design", so the groups of M3 sit at the top.
+                Some(k) => 61_000 + i64::try_from(k).unwrap_or(0) * 1_000,
+                None => i64::try_from(order).unwrap_or(0) * 600_000 + 60_000,
+            },
+        )),
         unread: if design || extra_unread { 2 } else { 0 },
         unread_mentions: u32::from(design),
         read_log_seq: posts.saturating_sub(if design { 2 } else { 0 }),
@@ -309,12 +406,13 @@ fn summary(group: &str, now: Timestamp, extra_unread: bool) -> MlsGroupSummary {
     }
 }
 
-fn member_at(group: &str, i: u32) -> MemberRow {
+pub(crate) fn member_at(group: &str, i: u32) -> MemberRow {
     let neighbours = group == "g-neighbours";
     let (role, ai, me, nameless) = if group == "g-design" {
+        // F3-3: Ana and Chen are admins; Ben, Scout, Dana and Eve are members.
         match i {
             0 => (MlsRole::Owner, false, true, false),
-            1 | 2 => (MlsRole::Admin, false, false, false),
+            1 | 3 => (MlsRole::Admin, false, false, false),
             4 => (MlsRole::Member, true, false, false),
             _ => (MlsRole::Member, false, false, false),
         }
@@ -341,8 +439,11 @@ fn member_at(group: &str, i: u32) -> MemberRow {
             false,
         )
     };
-    let display = if group == "g-design" && i < 5 {
-        Some(["Me", "Ana", "Ben", "Chen", "Scout"][i as usize].to_owned())
+    let display = if group == "g-design" && i < 7 {
+        Some(["Me", "Ana", "Ben", "Chen", "Scout", "Dana", "Eve"][i as usize].to_owned())
+    } else if group == "g-bookclub" && matches!(i, 3 | 4) {
+        // F3-4 (Ana) and F3-11 (Chen).
+        Some(["Ana", "Chen"][(i - 3) as usize].to_owned())
     } else if nameless {
         None
     } else {
@@ -382,18 +483,18 @@ impl MockMls {
         self.calls.iter().map(|(method, count)| (method.as_str(), *count))
     }
 
-    fn seq(&mut self) -> u64 {
+    pub(crate) fn seq(&mut self) -> u64 {
         self.next_event_seq += 1;
         self.next_event_seq
     }
 
-    fn log(&mut self, group: &str) -> u64 {
+    pub(crate) fn log(&mut self, group: &str) -> u64 {
         let next = self.next_log.entry(group.to_owned()).or_insert_with(|| post_count(group));
         *next += 1;
         *next
     }
 
-    fn group_event(
+    pub(crate) fn group_event(
         &mut self,
         group: &str,
         log_seq: Option<u64>,
@@ -415,7 +516,13 @@ impl MockMls {
             methods::MLS_GROUP_INFO => match self.summary(&group, now) {
                 Some(summary) => {
                     let issued = body.get("issued").and_then(JsonValue::as_u64).unwrap_or(0);
-                    vec![(80, DomainEvent::MlsGroupInfoRead { summary: Box::new(summary), issued })]
+                    // F3-8: a read issued while `fork_alarm` is active is
+                    // answered after it is cleared, and still lists it.
+                    let delay = self.admin.info_delay(&group, now);
+                    vec![(
+                        delay,
+                        DomainEvent::MlsGroupInfoRead { summary: Box::new(summary), issued },
+                    )]
                 }
                 None => vec![(
                     80,
@@ -515,7 +622,7 @@ impl MockMls {
             }
             methods::MLS_GROUP_MESSAGE_DELETE => self.delete(&group, &text("post_id")),
             methods::MLS_GROUP_LEAVE => self.leave(&group),
-            _ => Vec::new(),
+            other => self.respond_admin(other, body, &group, now),
         }
     }
 
@@ -538,6 +645,8 @@ impl MockMls {
             summary.last_post = None;
             summary.last_log_seq = 0;
             summary.read_log_seq = 0;
+            summary.quota_post = None;
+            summary.quota_commit = None;
             return Some(summary);
         }
         let base = if all_ids().iter().any(|g| g == group) { group } else { "g-fill-002" };
@@ -546,6 +655,7 @@ impl MockMls {
         if base != group {
             summary.name = format!("Joined {group}");
         }
+        self.admin.decorate(&mut summary, now);
         if let Some(read) = self.read.get(group) {
             summary.read_log_seq = (*read).max(summary.read_log_seq);
             if *read >= summary.last_log_seq {
@@ -626,7 +736,16 @@ impl MockMls {
         let page_size = u32::try_from(MEMBERS_PAGE).unwrap_or(200);
         let from = page * page_size;
         let to = (from + page_size).min(total);
-        let rows = (from..to).map(|i| member_at(group, i)).collect();
+        let rows = (from..to)
+            .map(|i| member_at(group, i))
+            .filter(|row| !self.admin.gone.contains(&row.anchor))
+            .map(|mut row| {
+                if let Some(role) = self.admin.roles.get(&row.anchor) {
+                    row.role = role.clone();
+                }
+                row
+            })
+            .collect();
         let next = (to < total).then(|| format!("p{}", page + 2));
         vec![(
             150,
@@ -686,6 +805,7 @@ impl MockMls {
 
     fn send(&mut self, group: &str, body: &JsonValue, now: Timestamp) -> Vec<Answer> {
         self.sends += 1;
+        *self.admin.sent.entry(group.to_owned()).or_default() += 1;
         let local_id =
             body.get("local_id").and_then(JsonValue::as_str).unwrap_or_default().to_owned();
         let post_id = format!("p-send-{}", self.sends);
@@ -795,9 +915,18 @@ impl MockMls {
                 last_log_seq: *self.next_log.get(group).unwrap_or(&post_count(group)),
             },
         )];
-        // F2-7: the first refresh of a group brings its news once.
-        if self.refreshed.insert(group.to_owned()) {
-            out.extend(self.news(group, now));
+        // The first refresh of a group (opening it asks for one) brings its M3
+        // events; the second one brings the F2-7 news, so the two walks do not
+        // trample each other.
+        let count = self.refresh_count.entry(group.to_owned()).or_default();
+        *count += 1;
+        match *count {
+            1 => out.extend(self.first_refresh(group, now)),
+            2 => {
+                self.refreshed.insert(group.to_owned());
+                out.extend(self.news(group, now));
+            }
+            _ => {}
         }
         out
     }
