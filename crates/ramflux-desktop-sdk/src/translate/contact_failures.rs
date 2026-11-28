@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! Why adding, verifying or registering an identity failed, from the
+//! Why adding or registering an identity failed, from the
 //! daemon's typed `reason_code` (never from its message text).
 //!
 //! | `reason_code` | key |
@@ -32,12 +32,11 @@ use crate::bus::BusError;
 pub const ROOT_REPLACEMENT_REQUIRED: &str = "root_replacement_confirmation_required";
 
 /// Methods whose refusals carry contact reason codes.
-const CONTACT_METHODS: [&str; 6] = [
+const CONTACT_METHODS: [&str; 5] = [
     methods::CONTACT_ADD,
     methods::CONTACT_CARD_IMPORT,
     methods::CONTACT_CARD_EXPORT,
     methods::CONTACT_ACCEPT,
-    methods::SAFETY_VERIFY,
     methods::CUSTODY_BEGIN,
 ];
 

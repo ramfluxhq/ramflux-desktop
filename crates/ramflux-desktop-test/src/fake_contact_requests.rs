@@ -40,8 +40,7 @@
 //! A row: `request_id`, `principal_id`, `root_commitment`, `direction`
 //! (`inbound` / `outbound`), `state`, `note` and `preview` (quoted by the
 //! product's own `quote_fallback_field`, exactly as the daemon sends them:
-//! `"…"` with `\"`, `\n`, `\u{…}` escapes), `safety_number` (twelve digit
-//! groups), `message_count`, `expires_at` (Unix seconds).
+//! `"…"` with `\"`, `\n`, `\u{…}` escapes), `message_count`, `expires_at` (Unix seconds).
 //!
 //! The peer side is simulated: a test has a peer ask this account
 //! ([`FakeContactRequests::incoming`]), hold messages from it
@@ -51,7 +50,7 @@
 //! `contact.declined`, `contact.blocked`, `contact.request.expired`) with
 //! identifiers and counts only (`request_id`, `principal_id`,
 //! `root_commitment`, `state`, `direction`, `message_count`) through the
-//! publisher the test installs; the note, preview and safety number are
+//! publisher the test installs; the note and preview are
 //! read through the list. With the setting `auto_accept`, an incoming
 //! request is accepted at once.
 
@@ -76,7 +75,6 @@ struct Held {
     incoming: bool,
     state: &'static str,
     note: Option<String>,
-    safety_number: Option<[&'static str; 12]>,
     messages: Vec<String>,
     /// Times this request was sent (an explicit add again resends it).
     sent: u32,
@@ -101,7 +99,6 @@ impl Held {
             // (product `text_safety::quote_fallback_field`; the preview is
             // the first 256 characters of the first held message).
             "note": self.note.as_deref().map(quote_fallback_field),
-            "safety_number": self.safety_number,
             "message_count": self.messages.len(),
             "preview": self.messages.first().map(|m| {
                 quote_fallback_field(&m.chars().take(256).collect::<String>())
@@ -203,11 +200,6 @@ fn typed(reason_code: &'static str, message: &str) -> Reply {
         details: None,
     }
 }
-
-const SAFETY_NUMBER: [&str; 12] = [
-    "05173", "88420", "61937", "24459", "90314", "77502", "13579", "24680", "11223", "44556",
-    "77889", "99001",
-];
 
 type Event = (String, &'static str, Value);
 
@@ -439,7 +431,6 @@ impl FakeContactRequests {
             incoming: false,
             state: "pending",
             note: None,
-            safety_number: Some(SAFETY_NUMBER),
             messages: Vec::new(),
             sent: 1,
             cooled: false,
@@ -531,7 +522,6 @@ impl FakeContactRequests {
                 incoming: true,
                 state: "pending",
                 note: note.map(str::to_owned),
-                safety_number: Some(SAFETY_NUMBER),
                 messages: Vec::new(),
                 sent: 1,
                 cooled: false,
@@ -647,7 +637,6 @@ mod tests {
         // Events carry identifiers and counts only.
         for (_, body) in seen.lock().unwrap().iter() {
             assert!(body.get("preview").is_none() && body.get("note").is_none(), "{body}");
-            assert!(body.get("safety_number").is_none(), "{body}");
         }
         let topics: Vec<String> = seen.lock().unwrap().iter().map(|(t, _)| t.clone()).collect();
         assert_eq!(topics, ["contact.requested", "contact.requested", "contact.accepted"]);

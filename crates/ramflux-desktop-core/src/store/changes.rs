@@ -36,6 +36,9 @@ pub enum ApplyError {
     /// Context not in the store.
     #[error("unknown context {0}")]
     UnknownContext(ContextId),
+    /// Participant not in the store.
+    #[error("unknown participant {0}")]
+    UnknownParticipant(ParticipantId),
     /// Moment not in the store.
     #[error("unknown moment {0}")]
     UnknownMoment(MomentId),

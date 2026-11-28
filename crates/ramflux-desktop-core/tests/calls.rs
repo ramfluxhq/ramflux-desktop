@@ -33,12 +33,12 @@ fn feed() -> Feed {
     let mut feed = Feed::new();
     feed.ok(1, DomainEvent::AccountUpdated(account()));
     for (id, safety) in [
-        (ME, SafetyState::Verified),
-        (PEER, SafetyState::Unverified),
-        ("p-cy", SafetyState::KeyChanged),
+        (ME, IdentityState::Verified),
+        (PEER, IdentityState::Tofu),
+        ("p-cy", IdentityState::Changed),
     ] {
         let mut p = participant(id, ParticipantKind::Human, id, true);
-        p.safety = safety;
+        p.identity = safety;
         feed.ok(1, DomainEvent::ParticipantUpserted(p));
     }
     feed.ok(1, DomainEvent::ContextUpserted(direct("c-ana", PEER)));
@@ -188,7 +188,7 @@ fn a_call_is_placed_in_a_direct_conversation_to_its_peer() {
     );
     assert_eq!(
         human(&feed.store, start("c-cy")).unwrap_err(),
-        IntentError::SafetyUnresolved(ParticipantId::new("p-cy"))
+        IntentError::IdentityUnresolved(ParticipantId::new("p-cy"))
     );
     assert_eq!(
         human(&feed.store, start("c-none")).unwrap_err(),

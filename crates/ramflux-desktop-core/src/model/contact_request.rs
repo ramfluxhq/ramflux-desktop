@@ -5,7 +5,7 @@
 //!
 //! Adding a contact sends the peer a request; until the peer accepts, the
 //! two are not contacts. The peer sees the request with the requester's
-//! safety number to compare, an optional note, and the messages the
+//! optional note and the messages the
 //! requester sent meanwhile, held by the daemon (a "message request") and
 //! delivered into the conversation only on accept. The peer accepts,
 //! declines or blocks (no further requests or messages from the
@@ -98,9 +98,6 @@ pub struct ContactRequest {
     /// The requester's note, as the daemon quoted it.
     #[serde(default)]
     pub note: Option<String>,
-    /// The safety number to compare with the peer before accepting.
-    #[serde(default)]
-    pub safety_number: Option<String>,
     /// Messages the requester sent that the daemon holds until an answer.
     #[serde(default)]
     pub held_messages: u32,

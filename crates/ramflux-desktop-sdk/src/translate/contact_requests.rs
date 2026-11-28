@@ -9,7 +9,6 @@
 //! peer), `direction` (`inbound` / `outbound`; `incoming` / `outgoing` are
 //! read too), `state` (`pending`, `accepted`, `declined`, `blocked`,
 //! `expired`), `note` (the requester's note, quoted by the daemon),
-//! `safety_number` (the daemon's digit groups, joined by spaces),
 //! `message_count` (held messages), `preview` (the first held message),
 //! `expires_at` (Unix seconds). The list has the pending incoming requests
 //! and this account's own requests (pending first, then recently answered
@@ -17,7 +16,7 @@
 //!
 //! Each change comes as an event with identifiers and counts only
 //! (`request_id`, `principal_id`, `root_commitment`, `state`, `direction`,
-//! `message_count`; never the note, preview or safety number):
+//! `message_count`; never the note or preview):
 //! `contact.requested` (a new incoming request, and again as held messages
 //! arrive), `contact.accepted`, `contact.declined`, `contact.blocked`,
 //! `contact.request.expired`. An event is reported at once and calls for
@@ -84,18 +83,6 @@ fn optional_text(row: &Value, field: &str) -> Option<String> {
     row.get(field).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_owned)
 }
 
-/// The safety number of a request row: exactly twelve groups of digits
-/// (CONTACT-02), joined by spaces; anything else is no number to compare
-/// (the row says it cannot be verified yet), never a shorter one.
-fn safety_number(row: &Value) -> Option<String> {
-    let groups = row["safety_number"].as_array()?;
-    let digits = |g: &&Value| {
-        g.as_str().is_some_and(|g| !g.is_empty() && g.bytes().all(|b| b.is_ascii_digit()))
-    };
-    (groups.len() == 12 && groups.iter().all(|g| digits(&g)))
-        .then(|| groups.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" "))
-}
-
 /// The request a row describes; `None` when it lacks what a request needs
 /// (nothing is guessed).
 pub fn request_of(row: &Value, default_state: Option<RequestState>) -> Option<ContactRequest> {
@@ -110,7 +97,6 @@ pub fn request_of(row: &Value, default_state: Option<RequestState>) -> Option<Co
         direction: direction(text(row, "direction"))?,
         state: state(text(row, "state")).or(default_state)?,
         note: optional_text(row, "note"),
-        safety_number: safety_number(row),
         held_messages: row["message_count"]
             .as_u64()
             .map_or(0, |n| u32::try_from(n).unwrap_or(u32::MAX)),
@@ -222,11 +208,10 @@ impl Translator {
     }
 
     /// Keeps what the cooldown explanation needs of this account's own
-    /// request (its id and state); nothing private (note, preview, safety
-    /// number) is copied here, so none outlives a lock in the translator.
+    /// request (its id and state); nothing private (note, preview) is
+    /// copied here, so none outlives a lock in the translator.
     fn remember_outgoing(&mut self, request: &ContactRequest) {
-        let kept =
-            ContactRequest { note: None, preview: None, safety_number: None, ..request.clone() };
+        let kept = ContactRequest { note: None, preview: None, ..request.clone() };
         self.outgoing_requests.insert(request.peer.clone(), kept);
     }
 
@@ -259,7 +244,6 @@ impl Translator {
             direction: RequestDirection::Outgoing,
             state,
             note: None,
-            safety_number: None,
             held_messages: 0,
             preview: None,
             expires_at: None,
@@ -363,52 +347,17 @@ mod tests {
     }
 
     #[test]
-    fn a_safety_number_is_exactly_twelve_digit_groups() {
-        let row = |number: Value| {
-            json!({ "request_id": "rq1", "principal_id": "p-ana", "direction": "inbound",
-                    "state": "pending", "safety_number": number })
-        };
-        let twelve: Vec<String> = (0..12).map(|i| format!("{i:05}")).collect();
-        let shown = request_of(&row(json!(twelve)), None).and_then(|r| r.safety_number);
-        assert_eq!(shown.as_deref(), Some(twelve.join(" ").as_str()));
-        for bad in [
-            json!(twelve[..11]),
-            json!([twelve.clone(), vec!["00000".to_owned()]].concat()),
-            json!(
-                twelve
-                    .iter()
-                    .enumerate()
-                    .map(|(i, g)| if i == 3 { json!(1) } else { json!(g) })
-                    .collect::<Vec<_>>()
-            ),
-            json!(
-                twelve
-                    .iter()
-                    .enumerate()
-                    .map(|(i, g)| if i == 3 { "12a45".to_owned() } else { g.clone() })
-                    .collect::<Vec<_>>()
-            ),
-            json!("05173 88420"),
-            Value::Null,
-        ] {
-            let request = request_of(&row(bad.clone()), None).expect("a request");
-            assert_eq!(request.safety_number, None, "{bad}");
-        }
-    }
-
-    #[test]
     fn the_translator_keeps_no_private_field_of_its_own_requests() {
         let mut t = Translator::new(Scope::Daemon, "rfd.sock");
         let listed = json!({ "requests": [{
             "request_id": "rq1", "principal_id": "p-ana", "direction": "outbound",
             "state": "declined", "note": "\"hi\"", "preview": "\"x\"",
-            "safety_number": (0..12).map(|i| format!("{i:05}")).collect::<Vec<_>>(),
         }] });
         let events = t.contact_request_list(&listed);
         assert!(!events.is_empty());
         let kept = &t.outgoing_requests[&ParticipantId::new("p-ana")];
         assert_eq!(kept.state, RequestState::Declined);
-        assert!(kept.note.is_none() && kept.preview.is_none() && kept.safety_number.is_none());
+        assert!(kept.note.is_none() && kept.preview.is_none());
     }
 
     #[test]

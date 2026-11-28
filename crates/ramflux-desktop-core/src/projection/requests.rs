@@ -78,7 +78,6 @@ mod tests {
             direction: RequestDirection::Incoming,
             state: RequestState::Pending,
             note: None,
-            safety_number: None,
             held_messages: 2,
             preview: None,
             expires_at: Some(Timestamp(100)),

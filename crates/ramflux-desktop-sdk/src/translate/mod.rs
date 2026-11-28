@@ -15,7 +15,7 @@
 //! - `account`: account status, devices, integrations.
 //! - `agents`: named agents, their creation, records, jobs and approvals, and
 //!   the PRX runtime status.
-//! - `identity`: identities (participants, devices, safety).
+//! - `identity`: identities (participants and devices).
 //! - `contacts`: participants and contact links.
 //! - `conversation`: conversations and groups as contexts, pins, settings.
 //! - `messages`: stored messages as message moments.
@@ -54,6 +54,7 @@ mod grant_failures;
 mod grants;
 mod group_sync;
 mod identity;
+mod identity_status;
 mod interventions;
 mod messages;
 pub(crate) mod node_failures;
@@ -520,6 +521,12 @@ impl Translator {
             Fetch::Task(..) => {
                 Translated { events: self.task_view(value), follow: self.take_surface_rereads() }
             }
+            Fetch::IdentityStatus { participant, .. } => Translated::events(
+                self.identity_status_read(&ParticipantId::new(participant.as_str()), value),
+            ),
+            Fetch::ConversationSecurity(context) => {
+                Translated::events(self.security_read(context, value))
+            }
         }
     }
 
@@ -638,6 +645,14 @@ impl Known for Translator {
 
     fn self_principal(&self) -> Option<&str> {
         self.directory.self_principal.as_deref()
+    }
+
+    fn identity_contact(&self, participant: &str) -> Option<String> {
+        let id = ParticipantId::new(participant);
+        self.people
+            .get(&id)
+            .and_then(|p| p.identity.contact_ref.clone())
+            .or_else(|| self.directory.identities.get(participant)?.commitment.clone())
     }
 
     fn contact_link(&self, participant: &str) -> Option<&crate::plan::KnownLink> {

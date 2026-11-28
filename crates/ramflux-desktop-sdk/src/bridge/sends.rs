@@ -116,6 +116,24 @@ impl Task {
             return;
         }
         let Some(send) = self.sends.remove(id) else { return };
+        // A send held back by an identity change that is not accepted: the
+        // message stays as a failed moment with its text, the composer says
+        // why, and nothing is sent again by itself.
+        if let Err(error) = &result
+            && let Some((blocked, follow)) =
+                self.translator.identity_send_blocked(&send.body, Some(id), error)
+        {
+            let mut events = self.translator.outgoing_message(
+                &send.body,
+                id,
+                Receipt::Failed { retryable: false },
+                send.at,
+            );
+            events.extend(blocked);
+            self.emit(events);
+            self.spawn_fetches(follow);
+            return;
+        }
         if let Ok(answer) = &result
             && let Some(daemon) = answer["message_id"].as_str()
         {

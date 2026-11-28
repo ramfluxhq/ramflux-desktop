@@ -16,6 +16,8 @@
 //! - `tasks`: task updates, step changes and where a step needs the
 //!   requester; task moments follow their task's state.
 //! - `calls`: voice calls and their timeline records.
+//! - `identity`: contact identity changes and the security of direct
+//!   conversations.
 //! - `contact_requests`: contact requests both ways.
 //! - `backup`: full backup and restore jobs.
 //! - `ceremony`: the creation ceremony of a born-v3 account.
@@ -31,6 +33,7 @@ mod cards;
 mod ceremony;
 mod changes;
 mod contact_requests;
+mod identity;
 mod index;
 mod recovery;
 mod reducer;
@@ -91,6 +94,14 @@ pub struct Store {
     nodes: BTreeMap<NodeId, Node>,
     devices: BTreeMap<DeviceId, Device>,
     participants: BTreeMap<ParticipantId, Participant>,
+    /// The latest security read of each direct conversation (in memory only).
+    security: BTreeMap<ContextId, crate::model::ConversationSecurity>,
+    /// Why the last acceptance of a contact's identity change failed.
+    identity_failures: BTreeMap<ParticipantId, (crate::model::AcceptFailure, u64)>,
+    /// How many acceptance failures were recorded (numbers each one).
+    identity_failure_seq: u64,
+    /// Direct conversations whose last send an identity change refused.
+    send_blocked: BTreeMap<ContextId, (ParticipantId, Option<MomentId>)>,
     contexts: BTreeMap<ContextId, Context>,
     moments: BTreeMap<MomentId, Moment>,
     objects: BTreeMap<ObjectId, Object>,

@@ -122,6 +122,16 @@ pub enum Fetch {
     /// `agent.get` of one agent, by its anchor: its configuration with the
     /// revision a change must be sent with.
     AgentGet(String),
+    /// `contact.verification.status` of one contact: the participant it
+    /// answers for and the identifier the SDK knows the contact by.
+    IdentityStatus {
+        /// The participant (principal) id.
+        participant: String,
+        /// The `contact` identifier sent.
+        contact: String,
+    },
+    /// `conversation.security` of one direct conversation.
+    ConversationSecurity(ContextId),
 }
 
 impl Fetch {
@@ -249,6 +259,18 @@ impl Fetch {
                 "task",
                 "task.list",
                 json!({ "conversation_id": context, "limit": PAGE_LIMIT, "cursor": cursor }),
+            ),
+            Self::IdentityStatus { contact, .. } => BusRequest::new(
+                account,
+                "contact",
+                "contact.verification.status",
+                json!({ "contact": contact }),
+            ),
+            Self::ConversationSecurity(context) => BusRequest::new(
+                account,
+                "conversation",
+                "conversation.security",
+                json!({ "conversation_id": context }),
             ),
             Self::Task(context, task) => BusRequest::new(
                 account,

@@ -10,7 +10,7 @@ use common::*;
 use ramflux_desktop_core::{
     AccountId, ContextId, ContextKind, DomainEvent, GrantId, GrantState, Lifecycle, ListState,
     Listing, LockState, MomentId, MomentKind, NodeId, ParticipantId, ParticipantKind, PinSource,
-    Receipt, Role, SafetyState, Source as _, SourceStatus, StandingApprovalId, methods, selectors,
+    Receipt, Role, Source as _, SourceStatus, StandingApprovalId, methods, selectors,
 };
 
 #[test]
@@ -142,10 +142,8 @@ fn the_account_scope_maps_the_directories_messages_and_grants() {
     assert_eq!((ana.display.as_str(), ana.kind), ("principal-ana", ParticipantKind::Unknown));
     assert!(ana.contact, "the accepted link");
     let bo = store.participant(&ParticipantId::new("principal-bo")).cloned().expect("bo");
-    assert_eq!((bo.kind, bo.safety), (ParticipantKind::Agent, SafetyState::Verified));
-    assert_eq!(bo.safety_number.as_deref(), Some("12345 67890"));
-    let cy = store.participant(&ParticipantId::new("principal-cy")).cloned().expect("cy");
-    assert_eq!(cy.safety, SafetyState::VerificationStale, "a verified device set that changed");
+    assert_eq!(bo.kind, ParticipantKind::Agent);
+    assert!(store.participant(&ParticipantId::new("principal-cy")).is_some());
     let own = store.participant(&ParticipantId::new("principal-me")).cloned().expect("me");
     assert_eq!((own.display.as_str(), own.kind), ("Me", ParticipantKind::Human));
     assert!(

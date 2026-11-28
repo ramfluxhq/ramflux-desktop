@@ -69,6 +69,66 @@ pub enum DomainEvent {
     },
     /// Participant inserted or replaced.
     ParticipantUpserted(Participant),
+    /// A contact's identity changed (`contact.identity_changed`): the change
+    /// waits for the user, who accepts it in a sheet. A newer change replaces
+    /// an older one.
+    IdentityChanged {
+        /// The contact.
+        participant: crate::ParticipantId,
+        /// The contact's @username, when the event named it.
+        #[serde(default)]
+        username: Option<String>,
+        /// The anchor the contact had.
+        previous_anchor: String,
+        /// The anchor the contact has now.
+        new_anchor: String,
+        /// Whether the SDK flags the contact as an AI.
+        #[serde(default)]
+        ai_flag: bool,
+    },
+    /// A status read of a contact's identity (`contact.verification.status`).
+    IdentityStateRead {
+        /// The contact.
+        participant: crate::ParticipantId,
+        /// The state.
+        state: crate::IdentityState,
+    },
+    /// The user's acceptance of a contact's new identity took effect.
+    IdentityAccepted {
+        /// The contact.
+        participant: crate::ParticipantId,
+        /// The anchor that was accepted. The pending change is cleared only
+        /// when it is still this one; a newer change stays to be reviewed.
+        /// `None` accepts whatever is pending.
+        #[serde(default)]
+        new_anchor: Option<String>,
+    },
+    /// The user's acceptance of a contact's new identity did not take effect.
+    IdentityAcceptFailed {
+        /// The contact.
+        participant: crate::ParticipantId,
+        /// Why.
+        reason: crate::AcceptFailure,
+    },
+    /// What `conversation.security` says about a direct conversation.
+    ConversationSecurityRead {
+        /// The conversation.
+        context: ContextId,
+        /// Its security.
+        security: crate::ConversationSecurity,
+    },
+    /// A send was refused because the contact's identity change is not
+    /// accepted (`identity_change_pending`). The message stays as a failed
+    /// moment; nothing is sent again by itself.
+    SendBlockedByIdentity {
+        /// The conversation.
+        context: ContextId,
+        /// The contact.
+        participant: crate::ParticipantId,
+        /// The failed message, when the source knows its moment.
+        #[serde(default)]
+        moment: Option<MomentId>,
+    },
     /// Context inserted or replaced.
     ContextUpserted(Context),
     /// Context and its moments removed.

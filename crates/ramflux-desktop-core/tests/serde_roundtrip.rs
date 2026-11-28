@@ -28,6 +28,12 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::NodeUpserted(_) => "NodeUpserted",
         DomainEvent::NodeHealthChanged { .. } => "NodeHealthChanged",
         DomainEvent::ParticipantUpserted(_) => "ParticipantUpserted",
+        DomainEvent::IdentityChanged { .. } => "IdentityChanged",
+        DomainEvent::IdentityStateRead { .. } => "IdentityStateRead",
+        DomainEvent::IdentityAccepted { .. } => "IdentityAccepted",
+        DomainEvent::IdentityAcceptFailed { .. } => "IdentityAcceptFailed",
+        DomainEvent::ConversationSecurityRead { .. } => "ConversationSecurityRead",
+        DomainEvent::SendBlockedByIdentity { .. } => "SendBlockedByIdentity",
         DomainEvent::ContextUpserted(_) => "ContextUpserted",
         DomainEvent::ContextRemoved { .. } => "ContextRemoved",
         DomainEvent::MomentAdded(_) => "MomentAdded",
@@ -89,7 +95,7 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentApprovalsUpdated(_) => "AgentApprovalsUpdated",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 66;
+const DOMAIN_EVENT_VARIANTS: usize = 72;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -97,7 +103,8 @@ fn moment_kind_name(kind: &MomentKind) -> &'static str {
         MomentKind::AgentSurface(_) => "AgentSurface",
         MomentKind::ObjectTransfer(_) => "ObjectTransfer",
         MomentKind::Intervention(_) => "Intervention",
-        MomentKind::SafetyChange(_) => "SafetyChange",
+        MomentKind::IdentityChange(_) => "IdentityChange",
+        MomentKind::SecurityNotice(_) => "SecurityNotice",
         MomentKind::Governance(_) => "Governance",
         MomentKind::ContactRequest(_) => "ContactRequest",
         MomentKind::TaskProgress(_) => "TaskProgress",
@@ -112,7 +119,7 @@ fn moment_kind_name(kind: &MomentKind) -> &'static str {
         MomentKind::GroupRename(_) => "GroupRename",
     }
 }
-const MOMENT_KIND_VARIANTS: usize = 17;
+const MOMENT_KIND_VARIANTS: usize = 18;
 
 fn intent_kind_name(kind: &IntentKind) -> &'static str {
     match kind {
@@ -155,7 +162,9 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::UnpinContext { .. } => "UnpinContext",
         IntentKind::AcceptContact { .. } => "AcceptContact",
         IntentKind::RejectContact { .. } => "RejectContact",
-        IntentKind::VerifySafetyNumber { .. } => "VerifySafetyNumber",
+        IntentKind::AcceptIdentityChange { .. } => "AcceptIdentityChange",
+        IntentKind::ReadIdentityState { .. } => "ReadIdentityState",
+        IntentKind::ReadConversationSecurity { .. } => "ReadConversationSecurity",
         IntentKind::AddContact { .. } => "AddContact",
         IntentKind::AddContactCard { .. } => "AddContactCard",
         IntentKind::ExportContactCard => "ExportContactCard",
@@ -228,7 +237,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
     }
 }
 /// Serializable intent variants (all but the nine secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 98;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 100;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -266,7 +275,8 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::ExpandToggled { .. } => "ExpandToggled",
         UiEventKind::MuteToggled { .. } => "MuteToggled",
         UiEventKind::DisappearingChosen { .. } => "DisappearingChosen",
-        UiEventKind::VerifySafetyPressed { .. } => "VerifySafetyPressed",
+        UiEventKind::ReviewIdentityPressed { .. } => "ReviewIdentityPressed",
+        UiEventKind::AcceptIdentityPressed { .. } => "AcceptIdentityPressed",
         UiEventKind::AddContactRequested { .. } => "AddContactRequested",
         UiEventKind::AddContactCardRequested { .. } => "AddContactCardRequested",
         UiEventKind::ShareContactCardRequested => "ShareContactCardRequested",
@@ -297,7 +307,7 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 63;
+const UI_EVENT_KIND_VARIANTS: usize = 64;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
     vec![
@@ -309,9 +319,13 @@ fn all_moment_kinds() -> Vec<MomentKind> {
             risk: Risk::High,
             summary: "Run a shell command".to_owned(),
         }),
-        MomentKind::SafetyChange(SafetyChangePayload {
+        MomentKind::IdentityChange(IdentityChangePayload {
             participant_id: ParticipantId::new("p-1"),
-            change: SafetyChangeKind::KeyChanged,
+            change: IdentityChangeKind::Changed,
+        }),
+        MomentKind::SecurityNotice(SecurityNoticePayload {
+            warning: SecurityWarning::ForkRecovered,
+            epoch: 4,
         }),
         MomentKind::Governance(GovernancePayload {
             action: GovernanceAction::RoleChanged,
@@ -410,6 +424,40 @@ fn all_domain_events() -> Vec<DomainEvent> {
             health: NodeHealth::Degraded,
         },
         DomainEvent::ParticipantUpserted(participant("p-1", ParticipantKind::Agent, "Orbit", true)),
+        DomainEvent::IdentityChanged {
+            participant: ParticipantId::new("p-1"),
+            username: Some("orbit".to_owned()),
+            previous_anchor: "A1".to_owned(),
+            new_anchor: "A2".to_owned(),
+            ai_flag: true,
+        },
+        DomainEvent::IdentityStateRead {
+            participant: ParticipantId::new("p-1"),
+            state: IdentityState::Verified,
+        },
+        DomainEvent::IdentityAccepted {
+            participant: ParticipantId::new("p-1"),
+            new_anchor: Some("A2".to_owned()),
+        },
+        DomainEvent::IdentityAcceptFailed {
+            participant: ParticipantId::new("p-1"),
+            reason: AcceptFailure::ChangedAgain,
+        },
+        DomainEvent::ConversationSecurityRead {
+            context: ContextId::new("c-1"),
+            security: ConversationSecurity {
+                state: SecurityState::ReEstablished,
+                epoch: 4,
+                peer_devices: 2,
+                any_ai: false,
+                warning: Some(SecurityWarning::ForkRecovered),
+            },
+        },
+        DomainEvent::SendBlockedByIdentity {
+            context: ContextId::new("c-1"),
+            participant: ParticipantId::new("p-1"),
+            moment: Some(MomentId::new("m-1")),
+        },
         DomainEvent::ContextUpserted(context("c-1", true)),
         DomainEvent::ContextRemoved { context_id: ContextId::new("c-9") },
         DomainEvent::MomentUpdated {
@@ -843,7 +891,6 @@ fn contact_request() -> ContactRequest {
         direction: RequestDirection::Incoming,
         state: RequestState::Pending,
         note: Some("from the meetup".to_owned()),
-        safety_number: Some("12345 67890".to_owned()),
         held_messages: 2,
         preview: Some("hi there".to_owned()),
         expires_at: Some(Timestamp(604_800_000)),
@@ -1017,7 +1064,12 @@ fn all_intent_kinds() -> Vec<IntentKind> {
         IntentKind::UnpinContext { context_id: ContextId::new("c-1") },
         IntentKind::AcceptContact { moment_id: MomentId::new("m-1") },
         IntentKind::RejectContact { moment_id: MomentId::new("m-1") },
-        IntentKind::VerifySafetyNumber { participant_id: ParticipantId::new("p-1") },
+        IntentKind::AcceptIdentityChange {
+            participant_id: ParticipantId::new("p-1"),
+            new_anchor: "A2".to_owned(),
+        },
+        IntentKind::ReadIdentityState { participant_id: ParticipantId::new("p-1") },
+        IntentKind::ReadConversationSecurity { context_id: ContextId::new("c-1") },
         IntentKind::AddContact { participant_id: ParticipantId::new("principal-ana") },
         IntentKind::AddContactCard {
             card: "ramflux:contact/card".to_owned(),
@@ -1196,7 +1248,11 @@ fn all_ui_event_kinds() -> Vec<UiEventKind> {
         UiEventKind::ExpandToggled { expanded: true },
         UiEventKind::MuteToggled { muted: true },
         UiEventKind::DisappearingChosen { seconds: None },
-        UiEventKind::VerifySafetyPressed { participant_id: ParticipantId::new("p-1") },
+        UiEventKind::ReviewIdentityPressed { participant_id: ParticipantId::new("p-1") },
+        UiEventKind::AcceptIdentityPressed {
+            participant_id: ParticipantId::new("p-1"),
+            new_anchor: "A2".to_owned(),
+        },
         UiEventKind::AddContactRequested { participant_id: ParticipantId::new("principal-ana") },
         UiEventKind::AddContactCardRequested {
             card: "ramflux:contact/card".to_owned(),

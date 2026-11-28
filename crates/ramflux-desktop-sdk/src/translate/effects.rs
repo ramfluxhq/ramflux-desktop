@@ -200,6 +200,18 @@ impl Translator {
                 .into_iter()
                 .collect(),
             methods::CONVERSATION_START => self.conversation_started(body, answer),
+            methods::IDENTITY_STATUS => {
+                self.identity_status_read(&ParticipantId::new(text(body, "participant_id")), answer)
+            }
+            methods::IDENTITY_ACCEPT_CHANGE => {
+                let anchor = Some(text(body, "new_anchor")).filter(|a| !a.is_empty());
+                self.identity_accepted(
+                    &ParticipantId::new(text(body, "participant_id")),
+                    anchor,
+                    answer,
+                )
+            }
+            methods::CONVERSATION_SECURITY => self.security_read(&context(), answer),
             methods::GROUP_LEAVE => self.left_group(&context()),
             methods::SEND_MESSAGE => {
                 if let Some(id) = answer["message_id"].as_str() {

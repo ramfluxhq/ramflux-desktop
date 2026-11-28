@@ -3,7 +3,7 @@
 
 //! Contact requests through the SDK source and a fake daemon with the
 //! CONTACT-02 request API (contract-first, docs/contract.md): an incoming
-//! request arrives on the stream with its note, safety number and held
+//! request arrives on the stream with its note and held
 //! messages; Accept, Decline and Block reach the daemon by request id (an
 //! accept reads the conversations again, where the held messages land);
 //! this account's own request shows on the contact, is sent again only when
@@ -126,11 +126,6 @@ fn an_incoming_request_shows_its_held_messages_and_is_accepted() {
     // As the daemon quoted them; kept as they are.
     assert_eq!(request.note.as_deref(), Some("\"we met at the meetup\""));
     assert_eq!(request.preview.as_deref(), Some("\"hi, it's Cy\""));
-    // The daemon's twelve digit groups, joined.
-    assert_eq!(
-        request.safety_number.as_deref(),
-        Some("05173 88420 61937 24459 90314 77502 13579 24680 11223 44556 77889 99001")
-    );
     assert!(account.store.participant(&ParticipantId::new("principal-cy")).is_some());
     // Adding someone who asked is answering their request instead.
     assert!(matches!(

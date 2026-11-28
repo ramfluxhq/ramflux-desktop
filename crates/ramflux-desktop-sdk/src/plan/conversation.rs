@@ -127,6 +127,15 @@ pub(super) fn start(acct: Option<&str>, body: &Value, known: &impl Known) -> Pla
     }
 }
 
+/// Plans `conversation.security {conversation_id}` for account `acct`.
+pub(super) fn security(acct: Option<&str>, body: &Value) -> Plan {
+    let context = ContextId::new(text(body, "context_id"));
+    if context.as_str().is_empty() {
+        return refuse_invalid("no conversation named");
+    }
+    super::call(Fetch::ConversationSecurity(context).request(acct))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

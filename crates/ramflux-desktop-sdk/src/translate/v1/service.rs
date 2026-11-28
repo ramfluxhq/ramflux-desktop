@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Span Brain
 
-//! A v1 service event: membership, group rename and key change rows. They
+//! A v1 service event: membership and group rename rows. They
 //! share the conversation stream with messages and order by the same key.
 
 use ramflux_desktop_core::{
-    DomainEvent, GovernanceAction, GovernancePayload, GroupRenamePayload, MomentKind,
-    SafetyChangeKind, SafetyChangePayload, SystemLevel, SystemPayload,
+    DomainEvent, GovernanceAction, GovernancePayload, GroupRenamePayload, MomentKind, SystemLevel,
+    SystemPayload,
 };
 use ramflux_protocol::message::{EventIdentity, Service, ServiceAction};
 
@@ -38,15 +38,9 @@ pub(super) fn project(
                 new_name: service.text.clone().unwrap_or_default(),
             })]
         }
-        Ok(ServiceAction::ServiceKeyChanged) => subjects
-            .into_iter()
-            .map(|participant_id| {
-                MomentKind::SafetyChange(SafetyChangePayload {
-                    participant_id,
-                    change: SafetyChangeKind::KeyChanged,
-                })
-            })
-            .collect(),
+        // A changed identity is surfaced by `contact.identity_changed` and
+        // accepted by the user; the conversation stream shows no row for it.
+        Ok(ServiceAction::ServiceKeyChanged) => Vec::new(),
         // A pin added or removed: one neutral row, whatever the target.
         Ok(ServiceAction::ServicePinAdded | ServiceAction::ServicePinRemoved) => {
             let args = serde_json::json!({ "actor": translator.display_of(&origin) });

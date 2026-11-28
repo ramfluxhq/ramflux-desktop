@@ -7,8 +7,7 @@
 //! spawned futures on the scope's connection and the answer comes back to
 //! the task, which translates it. A plan of several requests runs them in
 //! order and stops at the first failure, reporting how many were applied.
-//! Attachment jobs run step by step on their own (see `media`). A safety
-//! verification reads the compared snapshot first and verifies exactly it.
+//! Attachment jobs run step by step on their own (see `media`).
 //! Request bodies are wiped after sending. A node lookup
 //! that macOS Local Network privacy may have blocked is repeated a moment
 //! later (see [`node_lookup`]).
@@ -358,6 +357,18 @@ impl Task {
                     self.locked();
                 }
             }
+            // A refused acceptance of an identity change is the sheet's own
+            // answer, never a status-strip failure; the status is read again.
+            Err(error) if method == methods::IDENTITY_ACCEPT_CHANGE => {
+                let participant =
+                    ramflux_desktop_core::ParticipantId::new(text(body, "participant_id"));
+                let events = self.translator.identity_accept_refused(&participant, &error);
+                self.emit(events);
+                self.spawn_fetches(refresh);
+                if error.is_connection_lost() {
+                    self.lost();
+                }
+            }
             // The daemon does not know the watch's cursor: drop it and list
             // the roster again (no failure record; the listing brings a new
             // cursor, so the next watch is a fresh start, not a retry).
@@ -555,7 +566,6 @@ async fn perform(
             (result, refresh)
         }
         Plan::Calls { requests, refresh } => (in_order(client, requests).await, refresh),
-        Plan::Verify { lookup, refresh } => (verify(client, lookup).await, refresh),
         Plan::CardImage(job) => (super::card_image::load(client, &job).await, Vec::new()),
         Plan::PrxHost { action, provider, model, key, confirmed_path } => (
             crate::prx_host::run(action, &provider, &model, key, confirmed_path.as_deref()).await,
@@ -644,27 +654,6 @@ async fn in_order(client: &BusClient, requests: Vec<BusRequest>) -> Result<Value
         }
     }
     Ok(last)
-}
-
-/// `contact.safety_number`, then `contact.verify` with the compared
-/// snapshot it answered (`expected`), under a fresh retry key.
-async fn verify(client: &BusClient, lookup: BusRequest) -> Result<Value, BusError> {
-    let safety = client.call(&lookup).await?;
-    let Some(expected) = safety.get("expected").filter(|e| e.is_object()).cloned() else {
-        return Err(BusError::daemon(
-            "expected_safety_required",
-            "the daemon answered no safety snapshot to compare",
-        ));
-    };
-    let key = idempotency::fresh_key().map_err(|e| BusError::daemon("random", e))?;
-    let request = BusRequest::new(
-        lookup.account.as_deref(),
-        "contact",
-        "contact.verify",
-        json!({ "expected": expected }),
-    )
-    .with_operation_id(key);
-    client.call(&request).await
 }
 
 async fn write_diagnostics(client: &BusClient, path: &str) -> Result<Value, BusError> {

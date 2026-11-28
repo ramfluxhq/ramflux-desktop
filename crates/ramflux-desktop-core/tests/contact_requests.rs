@@ -22,7 +22,6 @@ fn request(
         direction,
         state,
         note: None,
-        safety_number: Some("12345".to_owned()),
         held_messages: 1,
         preview: Some("hi".to_owned()),
         expires_at: None,
@@ -249,7 +248,6 @@ fn a_count_only_event_keeps_the_listed_private_fields_and_a_lock_drops_them() {
     // An event of the same request: identifiers and a new count only.
     let event = ContactRequest {
         held_messages: 2,
-        safety_number: None,
         preview: None,
         ..request("r-cy", "p-cy", RequestDirection::Incoming, RequestState::Pending)
     };
@@ -257,12 +255,11 @@ fn a_count_only_event_keeps_the_listed_private_fields_and_a_lock_drops_them() {
     let kept = feed.store.contact_request(&cy, RequestDirection::Incoming).expect("r-cy");
     assert_eq!(kept.held_messages, 2);
     assert_eq!(kept.preview.as_deref(), Some("hi"), "until the list replaces it");
-    assert_eq!(kept.safety_number.as_deref(), Some("12345"));
     // A new request of the same peer starts without the old one's fields.
     let fresh = ContactRequest { id: "r-cy-2".to_owned(), ..event };
     feed.ok(3, DomainEvent::ContactRequestUpserted(fresh));
     let fresh = feed.store.contact_request(&cy, RequestDirection::Incoming).expect("r-cy-2");
-    assert!(fresh.preview.is_none() && fresh.safety_number.is_none());
+    assert!(fresh.preview.is_none());
 
     let lock = DomainEvent::AccountLockChanged {
         account_id: AccountId::new("a-1"),
@@ -271,7 +268,6 @@ fn a_count_only_event_keeps_the_listed_private_fields_and_a_lock_drops_them() {
     assert!(feed.ok(4, lock).contact_requests);
     for request in feed.store.contact_requests() {
         assert!(request.preview.is_none() && request.note.is_none(), "{request:?}");
-        assert!(request.safety_number.is_none(), "{request:?}");
     }
     assert_eq!(pending(&feed.store).len(), 2, "the requests themselves stay");
 }

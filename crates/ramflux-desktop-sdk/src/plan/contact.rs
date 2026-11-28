@@ -14,21 +14,22 @@
 //!   authenticated home-node session, verifies its device manifest and
 //!   caches it with an accepted link, so the contact is reachable at once.
 //!   A name lookup is provisional (`root_source: lookup`, trust on first
-//!   use) until a card pins the root or safety numbers are compared. The
+//!   use) until a card pins the root. The
 //!   daemon derives the link id.
 //! - `contact.accept`: the local form (requester, target of the pending
 //!   link). The federated form, which also notifies the requester, needs the
 //!   requester's device route; the daemon does not list it.
 //! - Adding and accepting read the identity directory again with the
-//!   contact list: the contact's devices and safety state follow the link.
+//!   contact list: the contact's devices follow the link.
 //! - `contact.reject`, `contact.block`, `contact.unblock`: the link id.
 //! - `contact.remove`: the link id and the reference CLI's default scope `me`.
-//! - `safety.verify` (the advanced fallback, never asked for in normal use):
-//!   `contact.safety_number` with the contact's identity commitment from
-//!   `identity.directory` (the daemon fetches both device sets from the node
-//!   and answers the compared snapshot), then `contact.verify {expected}`
-//!   with that snapshot, which the daemon compares again before it marks the
-//!   contact verified.
+//! - `identity.status` (a read): `contact.verification.status {contact}`.
+//! - `identity.accept_change`: `contact.trust.accept_change {contact,
+//!   new_anchor}`. `contact` is exactly the identifier the SDK named in the
+//!   change event or the refused send (else the contact's identity
+//!   commitment, else the participant id); `new_anchor` is the anchor the
+//!   user's sheet showed. The status is read again after the call, whether
+//!   it was accepted or refused.
 //!
 //! A contact request (`contact.request`) is the federated form only: it
 //! needs a federation route to the contact's node, which no directory lists
@@ -37,14 +38,12 @@
 use ramflux_desktop_core::{ContactLink, methods};
 use ramflux_sdk::{
     LocalBusContactAddRequest, LocalBusContactLinkRequest, LocalBusContactRemoveRequest,
-    LocalBusContactSafetyRequest,
 };
 use serde_json::Value;
 
 use super::fetch::{Fetch, Paged};
-use super::{Known, Plan, refuse, refuse_invalid, text};
+use super::{Known, Plan, refuse_invalid, text};
 use crate::bus::BusRequest;
-use crate::translate::reason::key;
 
 /// Scope of `contact.remove` (the reference CLI's default).
 pub const REMOVE_SCOPE: &str = "me";
@@ -178,22 +177,42 @@ pub(super) fn request_call(acct: Option<&str>, method: &str, body: &Value) -> Pl
     }
 }
 
-/// Plans `safety.verify` for account `acct`.
-pub(super) fn verify(acct: Option<&str>, body: &Value, known: &impl Known) -> Plan {
-    let commitment = known
-        .directory()
-        .and_then(|d| d.identities.get(text(body, "participant_id")))
-        .and_then(|identity| identity.commitment.clone());
-    let Some(commitment) = commitment else { return refuse(key::NO_COMMITMENT) };
-    // The daemon verifies the compared snapshot (`expected`) that
-    // `contact.safety_number` answers, never a bare commitment.
-    let lookup = LocalBusContactSafetyRequest { contact_identity_commitment: commitment };
-    match serde_json::to_value(lookup) {
-        Ok(value) => Plan::Verify {
-            lookup: BusRequest::new(acct, "contact", "contact.safety_number", value),
-            refresh: vec![Fetch::first(Paged::Identities)],
-        },
-        Err(error) => refuse_invalid(&error.to_string()),
+/// The identifier the SDK knows `participant` by: what its last event or
+/// refusal named, else the contact's identity commitment, else the id.
+fn contact_of(known: &impl Known, participant: &str) -> String {
+    known.identity_contact(participant).unwrap_or_else(|| participant.to_owned())
+}
+
+/// Plans `identity.status` for account `acct`: `contact.verification.status`.
+pub(super) fn identity_status(acct: Option<&str>, body: &Value, known: &impl Known) -> Plan {
+    let participant = text(body, "participant_id");
+    if participant.is_empty() {
+        return refuse_invalid("no contact named");
+    }
+    let fetch = Fetch::IdentityStatus {
+        participant: participant.to_owned(),
+        contact: contact_of(known, participant),
+    };
+    super::call(fetch.request(acct))
+}
+
+/// Plans `identity.accept_change` for account `acct`:
+/// `contact.trust.accept_change`. Only the anchor of the shown change is
+/// sent; the status is read again afterwards.
+pub(super) fn accept_change(acct: Option<&str>, body: &Value, known: &impl Known) -> Plan {
+    let (participant, new_anchor) = (text(body, "participant_id"), text(body, "new_anchor"));
+    if participant.is_empty() || new_anchor.is_empty() {
+        return refuse_invalid("no identity change named");
+    }
+    let contact = contact_of(known, participant);
+    Plan::Call {
+        request: BusRequest::new(
+            acct,
+            "contact",
+            "contact.trust.accept_change",
+            serde_json::json!({ "contact": contact, "new_anchor": new_anchor }),
+        ),
+        refresh: vec![Fetch::IdentityStatus { participant: participant.to_owned(), contact }],
     }
 }
 

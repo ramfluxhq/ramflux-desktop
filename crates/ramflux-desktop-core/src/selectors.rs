@@ -30,8 +30,6 @@ pub enum AttentionReason {
     TaskProposal,
     /// A conflict must be resolved.
     Conflict,
-    /// A key safety change must be acknowledged.
-    Safety,
     /// An agent surface waits for input.
     SurfaceInput,
     /// A handoff offer.
@@ -49,7 +47,6 @@ impl AttentionReason {
             MomentKind::ContactRequest(_) => Self::ContactRequest,
             MomentKind::TaskProgress(_) => Self::TaskInput,
             MomentKind::Conflict(_) => Self::Conflict,
-            MomentKind::SafetyChange(_) => Self::Safety,
             MomentKind::AgentSurface(_) => Self::SurfaceInput,
             MomentKind::Handoff(_) => Self::Handoff,
             MomentKind::Call(_) => Self::IncomingCall,
@@ -61,6 +58,8 @@ impl AttentionReason {
             | MomentKind::TaskEvent(_)
             | MomentKind::NameChange(_)
             | MomentKind::GroupRename(_)
+            | MomentKind::IdentityChange(_)
+            | MomentKind::SecurityNotice(_)
             | MomentKind::System(_) => Self::Other,
         }
     }

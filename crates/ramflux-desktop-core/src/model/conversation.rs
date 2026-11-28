@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::ids::{ContextId, ParticipantId, Timestamp};
 
+pub use super::identity::{IdentityChange, IdentityState};
+
 /// What kind of party a participant is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ParticipantKind {
@@ -112,11 +114,11 @@ impl NameWarnings {
 #[serde(rename_all = "snake_case")]
 pub enum RootSource {
     /// A name lookup on the home node: provisional (trusted on first use)
-    /// until a card pins the root or safety numbers are compared.
+    /// until a card pins the root.
     Lookup,
     /// The contact card they shared: the root it names is pinned.
     Card,
-    /// Safety numbers were compared and confirmed.
+    /// The root was confirmed.
     Verified,
 }
 
@@ -124,46 +126,6 @@ impl RootSource {
     /// Whether the root is only what a name lookup returned.
     pub const fn is_provisional(self) -> bool {
         matches!(self, Self::Lookup)
-    }
-}
-
-/// Key verification state for a participant.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SafetyState {
-    /// Keys not verified out of band.
-    #[default]
-    Unverified,
-    /// Safety number verified.
-    Verified,
-    /// Identity key changed since last seen.
-    KeyChanged,
-    /// Identity fork detected.
-    Forked,
-    /// The safety number was verified, but this contact's identity
-    /// authority changed since (the daemon's `verification_stale`: a new
-    /// device set, a signed authority change such as a revoked device, or
-    /// a representation upgrade). It does not say the keys or the safety
-    /// number changed. Sticky until verified again, but it refuses nothing:
-    /// a new conversation, group or call asks the user to acknowledge it.
-    VerificationStale,
-}
-
-impl SafetyState {
-    /// Whether the state is a sticky warning that asks to verify (a key
-    /// change, a fork, or a stale verification).
-    pub const fn needs_attention(self) -> bool {
-        matches!(self, Self::KeyChanged | Self::Forked | Self::VerificationStale)
-    }
-
-    /// Whether the state refuses a new conversation, group or call until
-    /// verified again: a key change or a fork, never a stale verification.
-    pub const fn refuses_contact(self) -> bool {
-        matches!(self, Self::KeyChanged | Self::Forked)
-    }
-
-    /// Whether an earlier verification no longer holds (verify again).
-    pub const fn is_stale(self) -> bool {
-        matches!(self, Self::VerificationStale)
     }
 }
 
@@ -201,15 +163,20 @@ pub struct Participant {
     /// Display name: the name a local source gave, else the short form of
     /// the id ([`ParticipantId::short`]).
     pub display: String,
-    /// Key verification state.
+    /// The state of the participant's identity as the SDK reports it.
     #[serde(default)]
-    pub safety: SafetyState,
+    pub identity: IdentityState,
+    /// The identity change waiting for the user's decision, when the
+    /// change event was seen (a `Changed` identity with none is waiting for
+    /// the new identity to be reported).
+    #[serde(default)]
+    pub pending_change: Option<IdentityChange>,
+    /// Whether the SDK flags the participant as an AI.
+    #[serde(default)]
+    pub ai_flag: bool,
     /// Whether the participant is in the user's contact list.
     #[serde(default)]
     pub contact: bool,
-    /// Safety number for out-of-band comparison.
-    #[serde(default)]
-    pub safety_number: Option<String>,
     /// The contact link, when the source reports one.
     #[serde(default)]
     pub link: ContactLink,
@@ -462,18 +429,6 @@ mod tests {
     }
 
     #[test]
-    fn a_stale_verification_needs_attention_but_refuses_nothing() {
-        assert!(SafetyState::VerificationStale.is_stale());
-        assert!(SafetyState::VerificationStale.needs_attention());
-        assert!(!SafetyState::VerificationStale.refuses_contact());
-        assert!(SafetyState::KeyChanged.refuses_contact());
-        assert!(SafetyState::Forked.refuses_contact());
-        assert!(!SafetyState::Unverified.refuses_contact());
-        assert!(SafetyState::KeyChanged.needs_attention());
-        assert!(!SafetyState::Verified.is_stale());
-    }
-
-    #[test]
     fn name_warnings_say_whether_any_applies() {
         assert!(!NameWarnings::default().any());
         assert!(NameWarnings { mixed_script: true, confusable_with: None }.any());
@@ -490,7 +445,7 @@ mod tests {
             serde_json::json!({ "id": "p-legacy", "kind": "Unknown", "display": "p-legacy" });
         let legacy: Participant = serde_json::from_value(json).expect("a legacy participant");
         assert_eq!(legacy.kind_claim, KindClaim::None);
-        assert_eq!(legacy.safety, SafetyState::Unverified);
+        assert_eq!(legacy.identity, IdentityState::Tofu);
         assert!(!legacy.name_warnings.any());
     }
 }

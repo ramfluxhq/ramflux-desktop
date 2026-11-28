@@ -503,7 +503,6 @@ fn read_model_requests() -> Vec<ramflux_desktop_sdk::bus::BusRequest> {
     .collect();
     for (method, body) in [
         (methods::SEND_MESSAGE, json!({ "context_id": "dm-ana", "text": "hi" })),
-        (methods::SAFETY_VERIFY, json!({ "participant_id": "principal-ana" })),
         (
             methods::GROUP_ADD_MEMBER,
             json!({ "context_id": "dm-ana", "participant_id": "principal-ana", "role": "Member" }),
@@ -511,9 +510,7 @@ fn read_model_requests() -> Vec<ramflux_desktop_sdk::bus::BusRequest> {
     ] {
         let effect = Effect::Call { method: method.to_owned(), body };
         match plan(Some(&account), effect, &known).plan {
-            Plan::Call { request, .. } | Plan::Verify { lookup: request, .. } => {
-                requests.push(request)
-            }
+            Plan::Call { request, .. } => requests.push(request),
             other => panic!("{method}: expected one request, got {other:?}"),
         }
     }

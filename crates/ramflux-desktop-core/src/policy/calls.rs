@@ -6,9 +6,7 @@
 //! Only the attended human places, answers, declines or hangs up a call;
 //! an agent never does. A call is one-to-one, so it is placed only in a
 //! direct conversation, to its other participant, never while that
-//! participant's key changed or forked without being verified again (a
-//! stale verification refuses nothing; the call strip asks the user to
-//! acknowledge it), never
+//! participant's identity changed without being accepted, never
 //! to a participant reported unreachable, and never while another call is
 //! under way (one call at a time). Answering and declining apply to a call
 //! that still rings here; hanging up to one that has not ended.
@@ -88,7 +86,7 @@ pub fn call_peer(store: &Store, context_id: &ContextId) -> Option<ParticipantId>
 ///
 /// [`IntentError::UnknownContext`], [`IntentError::CallNeedsDirect`] (not
 /// a direct conversation, or no single other participant),
-/// [`IntentError::SafetyUnresolved`], [`IntentError::NotReachable`] or
+/// [`IntentError::IdentityUnresolved`], [`IntentError::NotReachable`] or
 /// [`IntentError::CallInProgress`].
 pub fn check_start_call(
     store: &Store,
@@ -102,8 +100,8 @@ pub fn check_start_call(
     let peer = call_peer(store, context_id)
         .ok_or_else(|| IntentError::CallNeedsDirect(context_id.clone()))?;
     if let Some(participant) = store.participant(&peer) {
-        if participant.safety.refuses_contact() {
-            return Err(IntentError::SafetyUnresolved(peer));
+        if participant.identity.is_changed() {
+            return Err(IntentError::IdentityUnresolved(peer));
         }
         if participant.reachable == Some(false) {
             return Err(IntentError::NotReachable(peer));

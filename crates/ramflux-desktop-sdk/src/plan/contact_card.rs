@@ -17,8 +17,8 @@
 //!   commitment, signature and expiry, pins the root it names
 //!   (`root_source: card`) and answers `{contact}` like an add by id. The
 //!   identity directory and the contact list are read again, so the
-//!   contact's devices (and with them a route for a first message and the
-//!   safety number) show at once.
+//!   contact's devices (and with them a route for a first message) show at
+//!   once.
 //! - When the card names another root than a provisional name lookup
 //!   cached, the daemon refuses with
 //!   `root_replacement_confirmation_required` and both roots in `details`;
@@ -38,7 +38,7 @@ use super::{Plan, refuse_invalid, text};
 use crate::bus::BusRequest;
 
 /// The reads after a contact is added: the contact list (the link) and the
-/// identity directory (their devices, commitment and safety state).
+/// identity directory (their devices and commitment).
 pub(super) fn contact_refresh() -> Vec<Fetch> {
     vec![Fetch::ContactList, Fetch::first(Paged::Identities)]
 }

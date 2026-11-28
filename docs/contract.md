@@ -49,7 +49,7 @@ The store keeps each entity in its own collection, keyed by id:
 | `Account` | label, `kind` (HumanInteractive, HeadlessAi), node, device, `lock_state`, `self_participant_id` (the participant that is this account; outbound moments and receipts key on it, never guessed) |
 | `Node` | node profile: endpoints, `fingerprint`, `pin_source` (Bootstrap, Invite, Manual = trust on first use), `health`, `capabilities`, `expires_at`, `confirmed`, `builtin`, `enabled`, `is_default`, last `probe` (gateway and relay outcomes) |
 | `Device` | account, label, `this_device`, `revoked`, `last_seen` |
-| `Participant` | `kind` (Human, Agent, Device, Node, Unknown = not reported), `display` (the id when no name is reported), `safety` (`SafetyState`: Unverified, Verified, KeyChanged, Forked, VerificationStale = verified before the authority changed, verify again), `contact`, `safety_number`, `link` (`ContactLink`: None, Accepted, Incoming, Outgoing, Blocked, Removed, Rejected; `link_state()` reads `contact` when no link was reported), `reachable` (`Some(true)` when this account holds a verified device to send to, `None` when not reported), `kind_claim` (`KindClaim`: None = nothing reported, the safe default; Asserted(`PeerKind` Human / HeadlessAi / Bot) = only the participant's own claim; Verified(kind) = a root-signed public profile states it), `name_warnings` (`NameWarnings`: `mixed_script`, `confusable_with` another principal; advisory only), `root_source` (`RootSource`: Lookup = provisional name lookup, Card = pinned by their card, Verified = safety numbers compared; `None` when not reported) |
+| `Participant` | `kind` (Human, Agent, Device, Node, Unknown = not reported), `display` (the id when no name is reported), `identity` (`IdentityState`: Tofu = first seen on this device, the default and no badge; Verified; Changed = the identity changed and the user has not accepted it), `pending_change` (`IdentityChange`: `previous_anchor`, `new_anchor`, `username`, `seen_at`; set by the change event, never by a status read), `ai_flag` (the SDK's AI flag), `contact`, `link` (`ContactLink`: None, Accepted, Incoming, Outgoing, Blocked, Removed, Rejected; `link_state()` reads `contact` when no link was reported), `reachable` (`Some(true)` when this account holds a verified device to send to, `None` when not reported), `kind_claim` (`KindClaim`: None = nothing reported, the safe default; Asserted(`PeerKind` Human / HeadlessAi / Bot) = only the participant's own claim; Verified(kind) = a root-signed public profile states it), `name_warnings` (`NameWarnings`: `mixed_script`, `confusable_with` another principal; advisory only), `root_source` (`RootSource`: Lookup = provisional name lookup, Card = pinned by their card, Verified = confirmed; `None` when not reported) |
 | `ContactCard` | This account's own card as the backend exported it: `text`, optional `link` (`Store::own_contact_card`, from `DomainEvent::OwnContactCardUpdated`) |
 | `Context` | `kind` (Direct, Group, Space), `participants`, `pinned`, `unread`, `muted`, `disappearing_secs`, `roles` (Owner, Admin, Member, Bot: exactly the daemon's roles), `epoch` |
 | `Moment` | `context_id`, `origin`, `at`, `kind: MomentKind` (a `TaskEvent` carries `actor_kind_verified`; a `NameChange` is an authenticated public rename: participant, old and new name), `lifecycle` |
@@ -66,7 +66,7 @@ sides carry the conflicting `lines` for a side-by-side compare.
 
 `MomentKind` has one variant per inline moment, and each variant carries its
 own payload struct: `Message`, `AgentSurface`, `ObjectTransfer`,
-`Intervention`, `SafetyChange`, `Governance`, `ContactRequest`,
+`Intervention`, `IdentityChange`, `SecurityNotice`, `Governance`, `ContactRequest`,
 `TaskProgress`, `Conflict`, `PrivacyReveal`, `Handoff`, `Fallback` and
 `System`.
 
@@ -303,7 +303,7 @@ The kinds, by area:
   surface for its current state (`surface.request_resync`; the daemon
   rate-limits it and only the author answers).
 - Moments: `SurfaceAction`, `RequestSurfaceUpdate`, `Approve`, `Deny`, `Reveal`, `ResolveConflict`,
-  `AcceptContact`, `RejectContact`, `VerifySafetyNumber`, `AcceptHandoff`,
+  `AcceptContact`, `RejectContact`, `AcceptHandoff`,
   `DeclineHandoff`.
 - Contacts: `AddContact { participant_id }` (the id the contact shared; human
   only), `Contact { participant_id, action }` with `ContactAction` Accept,
@@ -453,7 +453,7 @@ controls:
 | `s01_first_launch` | No daemon, then bootstrap and invite nodes, a node added by URL (TOFU, confirmed), create, join or restore an account, lock and unlock |
 | `s02_daily` | Three contexts, unread counts, a streaming agent reply, an object transfer |
 | `s03_intervention` | A high-risk tool request, one-tap confirm approval, the result in the conversation |
-| `s04_safety` | A contact's key changes, a sticky warning, the safety number verified |
+| `s04_safety` | Contacts' identities change (F1-1 to F1-10): banner, review, accept, a refused send, fork recovery |
 | `s05_group_governance` | An invitation, a role change, a member removal with a confirmation bar |
 | `s06_in_progress` | A one-sentence request becomes a multi-step task that needs the user midway, then completes |
 | `s07_conflict_privacy_handoff` | A CAS conflict, an audited privacy reveal, a cross-device handoff |
@@ -609,14 +609,14 @@ follows the same contract.
 
 **Store.** A `ContactRequest` (daemon `id`, `peer`, `RequestDirection`
 `Incoming` / `Outgoing`, `RequestState` `Pending`, `Accepted`, `Declined`,
-`Blocked`, `Expired`, the requester's `note`, the `safety_number` to compare,
+`Blocked`, `Expired`, the requester's `note`,
 `held_messages` and a `preview` of the first, `expires_at`), one per peer and
 direction. `ContactRequestsListed` replaces the pending incoming requests (an
 answered one stays, so its end can be told); `ContactRequestUpserted` replaces
 one request (either direction), except that an update of the same request
-without the private fields (note, preview, safety number, expiry: what an
+without the private fields (note, preview, expiry: what an
 event carries) keeps the ones the last listing gave. Locking the account
-drops every note, preview and safety number, as it drops message bodies.
+drops every note and preview, as it drops message bodies.
 `ContactRequestPolicyUpdated` sets the account's `RequestPolicy` (`Manual` /
 `AutoAccept`). Selectors: `pending_contact_requests` (incoming, waiting, by
 name), `outgoing_contact_request(peer)` (this account's own request until
@@ -669,9 +669,7 @@ emits `AddContactRequested`.
   `\u{…}` escapes; preview at most 256 characters of the first held
   message). The desktop shows both exactly as sent, untrusted text, never
   quoted again ("Note: "…""), `message_count` (held; "1 message" /
-  "N messages"), `safety_number` (exactly twelve digit groups, joined by
-  spaces for display; anything else is shown as no number to compare,
-  "you can't verify who this is yet", never a shorter one). Locked accounts
+  "N messages"). Locked accounts
   cannot list. Read on account snapshots, request events and actions; if the daemon
   refuses it as a method it does not know (`ValidationFailed`, "local bus
   error: unsupported local bus method: …"): only then are the request
@@ -714,14 +712,14 @@ emits `AddContactRequested`.
   `contact.accepted`, `contact.declined`, `contact.blocked`,
   `contact.request.expired`. A body carries identifiers and counts only:
   `request_id`, `principal_id`, `root_commitment`, `state`, `direction`,
-  `message_count`; never the note, preview or safety number. Each is shown at
+  `message_count`; never the note or preview. Each is shown at
   once and calls for `contact.requests.list` (where the private fields are
   read while unlocked), `contact.list` and the identity directory; an accept
   also for the conversation directory. A requester's own pending request has
   no event; its decline arrives as `contact.declined` (`outbound`).
 
 **Contacts dock.** Requests list the pending ones (who asks, the note, "N
-messages waiting until you answer" with the preview, the safety number, Block /
+messages waiting until you answer" with the preview, Block /
 Decline / Accept); the switch "Accept contact requests automatically" shows once
 the daemon reported the setting, under the Requests heading (shown from then
 on), with help for each state (On: new requests are accepted at once; those
@@ -736,8 +734,8 @@ Screenshots: `request_shots` (run explicitly).
 `identity.directory` supplies `kind: human | headless_ai | bot` and
 `kind_verified:true` when a public profile is authenticated by the same root that
 signs the device set. This proves the root's claim, not biological humanity. It
-is independent of manual contact `verified` and `safety_state`; do not show a
-verified safety number solely because kind is authenticated. Legacy/profile-less
+is independent of the contact's identity state; do not show an identity as
+verified solely because kind is authenticated. Legacy/profile-less
 identities keep `kind_verified:false`. `kind_asserted` is a kind string or null,
 never a boolean.
 
@@ -776,14 +774,11 @@ alongside `kind_asserted` and `display_name`. A card-only label has
 `kind_verified:false`. An authenticated rename emits `contact.changed` with
 `reason:"public_profile_renamed"`, `principal_id`, `old_display_name`, and
 `new_display_name`; refresh contact and identity rows and show the former name
-when appropriate. A rename never refreshes manual safety verification.
+when appropriate. A rename never touches the identity state.
 
 `device.refresh.kind_asserted` is now a kind string or null and `kind_verified`
 means a verified public profile, matching directory/contact rows.
-`safety_kind_verified` retains the separate manual safety-and-authority check.
-`identity.directory.safety_state:"verification_stale"` remains mandatory when the
-manually verified full authority changes, even if the active-device hash and
-profile are unchanged. All task outcome, pending, rejection, transport and
+All task outcome, pending, rejection, transport and
 history metadata use the event's relation role when reporting
 `actor_kind_verified`; a headless-AI profile cannot authenticate a human role.
 A corrupt cached profile makes that actor unverified without failing unrelated
@@ -1044,27 +1039,44 @@ when null, whatever the flag says. A verified claim from either list wins;
 otherwise the identity row's, then the contact row's. `ParticipantKind`
 stays the coarse classification (`Human`; `Agent` for both AI kinds;
 `Unknown` for `None`). A workflow principal names no peer kind. A claim is
-never a verified safety number: safety stays what `safety_state` says.
+never a verified identity: the identity state stays what
+`contact.verification.status` says.
 
 **Safe default.** A principal nothing was reported about (a name lookup, a
 legacy identity without a profile, a row from an older daemon) is
-`KindClaim::None`, `SafetyState::Unverified`, no name warning, shown by
+`KindClaim::None`, `IdentityState::Tofu`, no name warning, shown by
 its short id: unverified, its kind unknown.
 
-**Stale verification.** `safety_state: verification_stale` is
-`SafetyState::VerificationStale`: it `needs_attention` (sticky banner in
-warning tone with Verify again) but refuses nothing. A new conversation, a
-new group and a call show an inline acknowledgement (Verify again /
-Continue) and then go ahead; only a key change or a fork refuses them
-(`SafetyState::refuses_contact`). The wording never claims the keys changed:
-the product sets it when the manually verified device-set hash changed, when
-a signed authority change (such as a revoked device) alters the verified
-authority, and on a representation upgrade (`rows.rs`); the desktop needs no
-second signal.
-`safety_kind_verified` is reported only by `device.refresh`, which the
-desktop does not call for peers; the identity row's `safety_state` is the
-manual verification the desktop shows. (The section above lists it with
-the directory rows; the product exposes it on `device.refresh` alone.)
+**Identity change.** `contact.verification.status {contact}` answers
+`identity_state` (`verified`, `tofu`, `changed`; a token not known reads as
+`Tofu` and only the token is logged). The event `contact.identity_changed
+{contact, username, previous_anchor, new_anchor, ai_flag}` becomes
+`DomainEvent::IdentityChanged`: the participant's `pending_change` (a newer one
+replaces an older one) and `Changed`, plus one `IdentityChange(Changed)` service
+line in each direct conversation with them; the status is read again. A header
+banner with Review (no dismiss), a warning glyph on the conversation row, and
+the Encryption section of the contact profile show it. Review opens the
+identity change sheet, the only place a change is accepted. Accepting is one
+explicit click on the anchor the sheet displayed: the intent
+`AcceptIdentityChange {participant_id, new_anchor}` is refused by the policy
+unless `new_anchor` equals the stored change's, and the sheet itself refuses to
+send an anchor that is no longer the current one (it shows "changed again" and
+asks for a new click). It calls `contact.trust.accept_change {contact,
+new_anchor}` (`contact` is the identifier the SDK named in the event or the
+send refusal, else the identity commitment); `{state: accepted}` becomes
+`IdentityAccepted` (the pending change is cleared only if it is still the one
+accepted; an `IdentityChange(Accepted)` line is added; the status is read
+again). The refusals `no_pending_change` and `anchor_mismatch` become
+`IdentityAcceptFailed` (`AlreadyHandled`, `ChangedAgain`), anything else
+`Failed`. A send refused with `identity_change_pending {contact}` becomes
+`SendBlockedByIdentity`: the message stays a failed moment with its text, the
+composer shows "Message not sent" with Review, and nothing is sent again after
+an acceptance. No timer, no accept on open, no batch accept and no accept from a
+notification exist. `conversation.security {conversation_id}` becomes
+`ConversationSecurityRead` (`state`, `epoch`, the peer's devices, any AI flag,
+and a `fork_recovered` warning, which adds one `SecurityNotice` line per epoch);
+`conversation.devices_changed` reads it again, with no line. A call to a
+contact whose change waits opens the sheet instead of calling.
 
 **Name warnings.** `mixed_script` and `display_name_confusable_with`
 (contact, identity and request rows) are `NameWarnings`. Either shows a
@@ -1080,7 +1092,7 @@ the kind mark belongs to the kind claim, never to the name.
 the principal, shown with the full principal id, keyed and timed by its
 stream entry and remembered across restarts; the contact and identity rows
 are read again (the stream already does). A replayed announcement adds
-nothing. A rename never touches the safety state.
+nothing. A rename never touches the identity state.
 
 **Task actors.** `actors.{requester,assignee,acceptor}` (`principal_id`,
 `device_id` — empty when no event device is known — `actor_kind`,
