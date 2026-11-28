@@ -126,7 +126,9 @@ impl Task {
             let mut events = self.translator.outgoing_message(
                 &send.body,
                 id,
-                Receipt::Failed { retryable: false },
+                // Resending is the user's own retry; the send is not kept, so
+                // nothing sends it again by itself.
+                Receipt::Failed { retryable: true },
                 send.at,
             );
             events.extend(blocked);

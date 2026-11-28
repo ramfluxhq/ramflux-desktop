@@ -163,8 +163,13 @@ impl Store {
             DomainEvent::IdentityAccepted { participant, new_anchor } => {
                 self.identity_accepted(at, participant, new_anchor.as_deref(), changes)?;
             }
-            DomainEvent::IdentityAcceptFailed { participant, reason } => {
-                self.identity_accept_failed(participant, *reason, changes)?;
+            DomainEvent::IdentityAcceptFailed { participant, reason, attempted_anchor } => {
+                self.identity_accept_failed(
+                    participant,
+                    *reason,
+                    attempted_anchor.as_deref(),
+                    changes,
+                )?;
             }
             DomainEvent::ConversationSecurityRead { context, security } => {
                 self.conversation_security(at, context, security, changes)?;

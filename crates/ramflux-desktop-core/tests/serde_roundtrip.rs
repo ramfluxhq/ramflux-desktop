@@ -442,6 +442,7 @@ fn all_domain_events() -> Vec<DomainEvent> {
         DomainEvent::IdentityAcceptFailed {
             participant: ParticipantId::new("p-1"),
             reason: AcceptFailure::ChangedAgain,
+            attempted_anchor: Some("A2".to_owned()),
         },
         DomainEvent::ConversationSecurityRead {
             context: ContextId::new("c-1"),

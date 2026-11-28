@@ -62,8 +62,12 @@ pub struct IdentitySheet {
     participant: Option<ParticipantId>,
     /// The anchor of the change the sheet last displayed: what Accept sends.
     shown: Option<String>,
-    /// The acceptance in flight: the failure number it was sent after.
-    accepting: Option<u64>,
+    /// The acceptance in flight: the anchor it named and the failure number
+    /// it was sent after. Its outcome is matched by the anchor.
+    accepting: Option<(String, u64)>,
+    /// Whether the sheet has shown a change since it opened: a change shown
+    /// later is then a "changed again", not a first sight.
+    showed: bool,
     note: Option<Note>,
     focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
@@ -97,6 +101,7 @@ impl IdentitySheet {
             participant: None,
             shown: None,
             accepting: None,
+            showed: false,
             note: None,
             focus: cx.focus_handle(),
             _subscriptions: subscriptions,
@@ -129,6 +134,7 @@ impl IdentitySheet {
             .participant(&participant)
             .and_then(|p| p.pending_change.as_ref())
             .map(|c| c.new_anchor.clone());
+        self.showed = self.shown.is_some();
         self.participant = Some(participant);
         self.accepting = None;
         self.note = None;
@@ -141,6 +147,7 @@ impl IdentitySheet {
         if self.participant.take().is_some() {
             self.shown = None;
             self.accepting = None;
+            self.showed = false;
             self.note = None;
             cx.notify();
         }
@@ -163,11 +170,14 @@ impl IdentitySheet {
         let changed = store.participant(&participant).is_some_and(|p| p.identity.is_changed());
         let failure = store.identity_failure(&participant);
         let current = Self::current(store, &participant);
-        let seq = store.identity_failure_seq();
         let mut note = self.note;
-        let mut accepting = self.accepting;
-        if let (Some(base), Some((reason, number))) = (accepting, failure)
-            && number > base
+        let mut accepting = self.accepting.clone();
+        // The outcome belongs to the click whose anchor it names, never to a
+        // later click: a failure of another anchor is not this one's.
+        if let (Some((anchor, base)), Some((reason, number, attempted))) =
+            (accepting.as_ref(), failure)
+            && number > *base
+            && attempted.is_none_or(|a| a == anchor)
         {
             accepting = None;
             note = Some(match reason {
@@ -176,12 +186,14 @@ impl IdentitySheet {
                 AcceptFailure::Failed => Note::Failed,
             });
         }
-        let _ = seq;
         if current != self.shown {
-            // Another change than the one shown: show it, and say so when
-            // the user had been shown one before.
-            if self.shown.is_some() && current.is_some() {
+            // Another change than the one shown: show it, and say so when a
+            // change was shown before, whatever the outcome of the click.
+            if self.showed && current.is_some() {
                 note = Some(Note::Again);
+            }
+            if current.is_some() {
+                self.showed = true;
             }
             self.shown = current;
             accepting = None;
@@ -212,7 +224,7 @@ impl IdentitySheet {
             self.observe(cx);
             return;
         }
-        self.accepting = Some(store.identity_failure_seq());
+        self.accepting = Some((shown.clone(), store.identity_failure_seq()));
         self.note = None;
         self.sink.emit(
             UiEventKind::AcceptIdentityPressed { participant_id: participant, new_anchor: shown },
@@ -247,7 +259,8 @@ impl Render for IdentitySheet {
             .as_ref()
             .and_then(|c| c.username.as_deref())
             .map(|u| i18n::bidi::isolate(&format!("@{u}")));
-        let ai = person.ai_flag || person.kind == ramflux_desktop_core::ParticipantKind::Agent;
+        // The marker comes from the SDK's ai_flag alone, never the directory kind.
+        let ai = person.ai_flag;
         let waiting = self.shown.is_none();
         let accepting = self.accepting.is_some();
         let handled = self.note == Some(Note::Already);
