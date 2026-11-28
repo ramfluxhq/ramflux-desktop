@@ -18,6 +18,7 @@
 //! - [`conversation`]: starting a direct conversation (its first message).
 //! - [`message`]: direct and group sends.
 //! - [`media`]: attachments: send, download, save, retry and cancel.
+//! - [`mls_group`]: MLS groups (refused on a live source until the pin batch).
 //! - [`group`]: membership, roles and invitations.
 //! - [`surface`]: surface actions and update requests.
 //! - [`card_session`]: the card runtime's session calls (`card.session.*`).
@@ -42,6 +43,7 @@ pub mod group;
 pub mod group_create;
 pub mod media;
 pub mod message;
+pub mod mls_group;
 pub mod surface;
 pub mod task;
 pub mod username;
@@ -473,6 +475,8 @@ fn account_call(acct: Option<&str>, method: &str, body: &Value, known: &impl Kno
         | methods::CONTACT_BLOCK
         | methods::CONTACT_UNBLOCK
         | methods::CONTACT_REMOVE => contact::contact_call(acct, method, body, known),
+        // W: the pin batch enables these on a live source (see the bridge).
+        method if methods::is_mls_group(method) => mls_group::plan(acct, method, body),
         _ => refuse_invalid("no daemon counterpart"),
     }
 }

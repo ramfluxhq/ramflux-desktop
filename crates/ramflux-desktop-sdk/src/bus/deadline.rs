@@ -38,7 +38,7 @@ pub enum Weight {
 }
 
 /// Methods that reach a node, or derive keys from a passphrase.
-const NETWORK: [&str; 37] = [
+const NETWORK: [&str; 42] = [
     "account.create",
     "account.backup.create",
     "account.restore.verify",
@@ -79,10 +79,16 @@ const NETWORK: [&str; 37] = [
     "username.contact.add",
     "username.mutate",
     "username.resolve",
+    // MLS groups.
+    "group.join",
+    "group.invite.create",
+    "group.invite.revoke",
+    "group.message.delete",
+    "group.refresh",
 ];
 
 /// Methods that only read.
-const READS: [&str; 22] = [
+const READS: [&str; 27] = [
     "daemon.status",
     "node.list",
     "account.list",
@@ -105,6 +111,12 @@ const READS: [&str; 22] = [
     "account.backup.jobs",
     "contact.verification.status",
     "conversation.security",
+    // MLS group reads.
+    "group.info",
+    "group.invite.list",
+    "group.history",
+    "group.members",
+    "group.join.pending",
 ];
 
 /// The weight of `method`.

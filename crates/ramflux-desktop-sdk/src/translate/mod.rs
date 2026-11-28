@@ -19,6 +19,7 @@
 //! - `contacts`: participants and contact links.
 //! - `conversation`: conversations and groups as contexts, pins, settings.
 //! - `messages`: stored messages as message moments.
+//! - `mls_group`: MLS groups: replies, error frames and `group.event` frames.
 //! - `objects`: the object directory.
 //! - `grants`: approvals, grants and standing approvals.
 //! - `interventions`: approvals shown in their conversation.
@@ -57,6 +58,7 @@ mod identity;
 mod identity_status;
 mod interventions;
 mod messages;
+pub mod mls_group;
 pub(crate) mod node_failures;
 pub(crate) mod objects;
 mod outgoing;
