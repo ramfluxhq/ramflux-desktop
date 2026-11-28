@@ -173,7 +173,7 @@ fn describe_kind(
                 .map_or_else(|| approval_id.to_string(), |a| a.scope.clone());
             (tr_args("confirm.revoke_standing", &[("scope", &scope)]), None, Risk::High)
         }
-        IntentKind::RevokeDevice { device_id } => {
+        IntentKind::RevokeDevice { .. } => {
             // A device is named for a person, never by its id.
             let label = tr("settings.devices.other_device");
             (tr_args("confirm.revoke_device", &[("device", &label)]), None, Risk::High)

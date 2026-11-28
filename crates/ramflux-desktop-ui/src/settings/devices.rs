@@ -63,11 +63,9 @@ pub(crate) fn page(
     );
     let render_list = move |window: &mut gpui_kit::Window, cx: &mut App| -> gpui_kit::AnyElement {
         // The devices whose "Technical details" are open (view-local).
-        let open_details = window.use_keyed_state(
-            "settings-devices-details",
-            cx,
-            |_, _| std::collections::BTreeSet::<String>::new(),
-        );
+        let open_details = window.use_keyed_state("settings-devices-details", cx, |_, _| {
+            std::collections::BTreeSet::<String>::new()
+        });
         if devices.is_empty() {
             let (title, description, kind) = if let Some(reason) = failure.as_ref() {
                 (tr("settings_ui.devices_error"), reason.clone(), catalog::StateKind::Error)
@@ -195,7 +193,9 @@ pub(crate) fn page(
                                     div()
                                         .id(domain_id("device-id", &device.id))
                                         .test_support()
-                                        .text_size(gpui_kit::rems(palette(cx).size_secondary / 15.0))
+                                        .text_size(gpui_kit::rems(
+                                            palette(cx).size_secondary / 15.0,
+                                        ))
                                         .text_color(palette(cx).secondary)
                                         .child(SharedString::from(device.id.to_string())),
                                 )

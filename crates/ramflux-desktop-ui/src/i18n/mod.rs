@@ -250,7 +250,9 @@ pub fn backend_text(text: &str) -> SharedString {
     if !text.starts_with("backend.") {
         return known_code(text).unwrap_or_else(|| {
             if !text.is_empty() {
-                ramflux_desktop_sdk::local::app_log::warn(&format!("unmapped failure text: {text}"));
+                ramflux_desktop_sdk::local::app_log::warn(&format!(
+                    "unmapped failure text: {text}"
+                ));
             }
             tr("backend.failure.generic")
         });

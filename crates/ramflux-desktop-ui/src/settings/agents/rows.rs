@@ -145,8 +145,10 @@ impl AgentsPanel {
     /// The agents the open account owns, with their state and actions.
     pub(super) fn render_list(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let state = self.state(cx);
+        let agents = records(self.state(cx));
         let roster = match state.agent_roster() {
-            AgentRosterState::Loading => Some(tr("agents.roster.loading")),
+            // A loading line never sits above a loaded list.
+            AgentRosterState::Loading => agents.is_empty().then(|| tr("agents.roster.loading")),
             AgentRosterState::Offline => Some(tr("agents.roster.offline")),
             AgentRosterState::Failed(refusal) => Some(tr(refusal_key(&refusal))),
             AgentRosterState::Ready => None,
@@ -155,7 +157,6 @@ impl AgentsPanel {
             .last_failure(cx)
             .filter(|message| message.starts_with("backend.agent."))
             .map(|message| tr(&message));
-        let agents = records(self.state(cx));
         v_flex()
             .id("agent-list")
             .role(Role::List)

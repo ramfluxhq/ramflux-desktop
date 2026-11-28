@@ -89,7 +89,8 @@ impl ProfileDock {
 impl Render for ProfileDock {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let peer = self.peer(cx);
-        let row = peer.and_then(|peer| self.contacts.update(cx, |dock, cx| dock.peer_section(&peer, cx)));
+        let row =
+            peer.and_then(|peer| self.contacts.update(cx, |dock, cx| dock.peer_section(&peer, cx)));
         let open = self.technical_open;
         let body = v_flex().id("dock-profile").size_full().overflow_y_scroll();
         let Some(row) = row else {

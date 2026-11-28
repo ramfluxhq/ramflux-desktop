@@ -121,9 +121,9 @@ impl EntryPage {
         let handle = self.store.read(cx);
         handle.entry_store().app_lock(account).is_some_and(|lock| {
             lock.code_attempts_exhausted
-                || lock
-                    .code_retry_after_ms
-                    .is_some_and(|ms| crate::settings::account::remaining_ms(&self.code_clock, ms) > 0)
+                || lock.code_retry_after_ms.is_some_and(|ms| {
+                    crate::settings::account::remaining_ms(&self.code_clock, ms) > 0
+                })
         })
     }
 
@@ -694,13 +694,7 @@ impl EntryPage {
                 } else {
                     ("lock-code-wait", "settings.app_lock.code_wait")
                 };
-                Some((
-                    id,
-                    tr_args(
-                        key,
-                        &[("time", &crate::settings::account::countdown(wait_ms))],
-                    ),
-                ))
+                Some((id, tr_args(key, &[("time", &crate::settings::account::countdown(wait_ms))])))
             } else if wrong_code {
                 Some(("lock-wrong-code", tr("entry.app_lock.wrong_code")))
             } else if refused_text.is_some() {

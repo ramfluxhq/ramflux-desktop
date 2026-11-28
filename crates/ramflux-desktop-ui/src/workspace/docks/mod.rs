@@ -41,7 +41,9 @@ use gpui_kit::{
     AnyView, App, ClickEvent, Context, EventEmitter, FocusHandle, Focusable, IntoElement, Render,
     Role, SharedString, Window, div,
 };
-use ramflux_desktop_core::{Context as ConversationContext, ContextKind, ParticipantKind, Store, selectors};
+use ramflux_desktop_core::{
+    Context as ConversationContext, ContextKind, ParticipantKind, Store, selectors,
+};
 use ramflux_desktop_navigation::direction::h_flex;
 use serde::{Deserialize, Serialize};
 
@@ -81,8 +83,9 @@ impl DockTool {
         let agent_present = selectors::participants(store, &context.id)
             .into_iter()
             .any(|p| p.kind == ParticipantKind::Agent);
-        let approvals =
-            agent_present || store.grants().next().is_some() || store.standing_approvals().next().is_some();
+        let approvals = agent_present
+            || store.grants().next().is_some()
+            || store.standing_approvals().next().is_some();
         let direct = context.kind == ContextKind::Direct;
         let group = context.kind == ContextKind::Group;
         Self::ALL

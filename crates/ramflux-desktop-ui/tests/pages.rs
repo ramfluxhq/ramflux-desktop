@@ -172,6 +172,7 @@ fn settings_rotate_passphrase_and_export_diagnostics(cx: &mut TestAppContext) {
     settings(cx, handle, &shell, SettingsSection::Account);
     type_into(cx, handle, "rotate-current", "old words here");
     type_into(cx, handle, "rotate-next", "new words here");
+    type_into(cx, handle, "rotate-repeat", "new words here");
     click(cx, handle, "settings-rotate");
     let body = last_body(cx, &shell, methods::ACCOUNT_ROTATE_PASSPHRASE);
     assert_eq!(body["account_id"], "a-personal");

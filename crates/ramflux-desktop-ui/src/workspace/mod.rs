@@ -72,9 +72,9 @@ use sections::{
 use docks::approvals::ApprovalsDock;
 use docks::contacts::{ContactsDock, ContactsDockEvent};
 use docks::evidence::EvidenceDock;
-use docks::profile::ProfileDock;
 use docks::members::{MembersDock, MembersDockEvent};
 use docks::objects::ObjectsDock;
+use docks::profile::ProfileDock;
 
 /// Dock engine panel name of the conversation field.
 const CONVERSATION_PANEL: &str = "Conversation";
@@ -156,9 +156,8 @@ impl Workspace {
         let members = cx.new(|cx| MembersDock::new(store.clone(), sink.clone(), cx));
         let approvals = cx.new(|cx| ApprovalsDock::new(store.clone(), sink.clone(), cx));
         let evidence = cx.new(|cx| EvidenceDock::new(store.clone(), cx));
-        let profile = cx.new(|cx| {
-            ProfileDock::new(store.clone(), contacts.clone(), evidence.clone(), cx)
-        });
+        let profile =
+            cx.new(|cx| ProfileDock::new(store.clone(), contacts.clone(), evidence.clone(), cx));
         let call_bar = cx.new(|cx| CallBar::new(store.clone(), sink.clone(), window, cx));
         let incoming_call = cx.new(|cx| IncomingCall::new(store.clone(), sink.clone(), cx));
         let groups = cx.new(|cx| GroupDirectory::new(store.clone(), window, cx));

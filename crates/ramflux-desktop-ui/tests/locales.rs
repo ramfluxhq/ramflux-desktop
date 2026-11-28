@@ -423,6 +423,7 @@ fn every_reason_the_sdk_source_writes_is_translated() {
         .chain(ramflux_desktop_sdk::translate::reason::key::ALL)
         .chain([
             ramflux_desktop_sdk::bus::TIMEOUT_KEY,
+            ramflux_desktop_sdk::bus::NETWORK_KEY,
             ramflux_desktop_sdk::bus::RECONCILE_KEY,
             ramflux_desktop_sdk::bus::UNAUTHENTICATED_KEY,
             ramflux_desktop_sdk::bus::TRANSPORT_SECURITY_KEY,
@@ -441,9 +442,17 @@ fn a_reason_with_arguments_is_translated_with_them() {
     let timeout = ramflux_desktop_ui::i18n::tr("backend.failure.timeout");
     assert_eq!(text.as_ref(), format!("Stopped after 1 of 2: {timeout}"));
     let daemon = ramflux_desktop_ui::i18n::backend_text("local bus error: x");
-    assert_eq!(daemon.as_ref(), "local bus error: x", "daemon text is shown as written");
+    assert_eq!(
+        daemon.as_ref(),
+        ramflux_desktop_ui::i18n::tr("backend.failure.generic").as_ref(),
+        "daemon text is never shown as written"
+    );
     let odd = ramflux_desktop_ui::i18n::backend_text("backend.failure.partial not-json");
-    assert_eq!(odd.as_ref(), "backend.failure.partial not-json", "never a half translation");
+    assert_eq!(
+        odd.as_ref(),
+        ramflux_desktop_ui::i18n::tr("backend.failure.generic").as_ref(),
+        "never a half translation"
+    );
 }
 
 /// User-facing text names no internal work items (card ids such as `K8`)
@@ -456,7 +465,18 @@ fn user_facing_text_has_no_card_ids_or_protocol_terms() {
             .windows(3)
             .any(|w| matches!(w[0], '(' | '\u{FF08}') && w[1] == 'K' && w[2].is_ascii_digit())
     };
-    const PROTOCOL_TERMS: [&str; 3] = ["A2UI", "CAS ", "principal id"];
+    const PROTOCOL_TERMS: [&str; 10] = [
+        "A2UI",
+        "CAS ",
+        "principal id",
+        "SDK",
+        "socket",
+        "rfd.sock",
+        "principal-",
+        "device-",
+        "\u{8d26}\u{53f7}",
+        "\u{98ce}\u{9669}\u{ff1a}",
+    ];
     for (tag, entries) in catalogues() {
         for (key, text) in entries {
             let Some(text) = text else { continue };

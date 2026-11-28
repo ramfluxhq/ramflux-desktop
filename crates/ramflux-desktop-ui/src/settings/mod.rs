@@ -41,7 +41,7 @@ pub mod sync;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::FocusTrapElement as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::InputState;
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::setting::Settings;
 use gpui_kit::component::{
     ActiveTheme as _, IconName, Selectable as _, Sizable as _, StyledExt as _, v_flex,
@@ -217,6 +217,7 @@ impl SettingsPage {
             username_configured: ramflux_desktop_sdk::username_center::current().is_some(),
             current: masked("settings.account.current", window, cx),
             next: masked("settings.account.next", window, cx),
+            repeat: masked("settings.account.repeat", window, cx),
             username: crate::i18n::localized_input(
                 "settings.account.username_name",
                 window,
@@ -254,6 +255,14 @@ impl SettingsPage {
                 }
             },
         ));
+        // The mismatch line and the button follow what is typed.
+        for input in [&inputs.next, &inputs.repeat] {
+            subscriptions.push(cx.subscribe(input, |_, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
+            }));
+        }
         let backup = cx.new(|cx| backup::BackupPanel::new(store.clone(), root.clone(), window, cx));
         subscriptions.push(cx.observe(&backup, |_, _, cx| cx.notify()));
         let agents = cx.new(|cx| {
@@ -348,8 +357,8 @@ impl SettingsPage {
     }
 
     /// The masked inputs of passphrase rotation.
-    pub fn rotate_inputs(&self) -> [&Entity<InputState>; 2] {
-        [&self.inputs.current, &self.inputs.next]
+    pub fn rotate_inputs(&self) -> [&Entity<InputState>; 3] {
+        [&self.inputs.current, &self.inputs.next, &self.inputs.repeat]
     }
 
     /// The backup section's panel.

@@ -417,7 +417,7 @@ const RECEIPT_PX: f32 = 14.0;
 fn receipt_meta(payload: &MessagePayload, outbound: bool) -> Option<impl IntoElement> {
     use gpui_kit::assets::IconName as Catalog;
     let icon = match payload.receipt {
-        _ if !outbound => return None,
+        _ if !outbound || payload.tombstone => return None,
         Receipt::Failed { .. } | Receipt::WaitingForNode { .. } => return None,
         Receipt::Sending => Catalog::Clock,
         Receipt::Sent => Catalog::Check,

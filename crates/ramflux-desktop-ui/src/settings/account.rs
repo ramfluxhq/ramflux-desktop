@@ -31,6 +31,8 @@ pub struct AccountInputs {
     pub current: Entity<InputState>,
     /// New passphrase (rotation).
     pub next: Entity<InputState>,
+    /// The new passphrase typed a second time (rotation).
+    pub repeat: Entity<InputState>,
     /// The username to claim (or change to), typed with or without `@`.
     pub username: Entity<InputState>,
     /// The recovery phrase that authorizes the username change.
@@ -56,7 +58,9 @@ const REFRESH_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(2);
 /// section, locking the account or switching accounts), the account code
 /// included.
 pub(super) fn clear_inputs(inputs: &AccountInputs, window: &mut Window, cx: &mut App) {
-    for input in [&inputs.current, &inputs.next, &inputs.username, &inputs.username_phrase] {
+    for input in
+        [&inputs.current, &inputs.next, &inputs.repeat, &inputs.username, &inputs.username_phrase]
+    {
         input.update(cx, |input, cx| input.set_value("", window, cx));
     }
     clear_code(&inputs.app_lock_code, window, cx);
@@ -209,11 +213,17 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
     let rotation = {
         let current = inputs.current.clone();
         let next = inputs.next.clone();
+        let repeat = inputs.repeat.clone();
         let root = context.root.clone();
         let account = account.as_ref().map(|a| a.id.clone());
         SettingItem::render(move |_, _, cx: &mut App| {
-            let (current, next, root, account) =
-                (current.clone(), next.clone(), root.clone(), account.clone());
+            let (current, next, repeat, root, account) =
+                (current.clone(), next.clone(), repeat.clone(), root.clone(), account.clone());
+            // The two new codes must agree before anything is sent.
+            let (typed, again) =
+                (next.read(cx).value().to_string(), repeat.read(cx).value().to_string());
+            let mismatch = !again.is_empty() && typed != again;
+            let ready = !typed.is_empty() && typed == again;
             design::section("account-rotate", tr("settings.account.rotate_title"), cx)
                 .child(super::presentation::field(
                     tr("settings.account.current"),
@@ -233,13 +243,35 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
                         .large(),
                     cx,
                 ))
+                .child(design::help(tr("settings.account.code_help"), cx))
+                .child(super::presentation::field(
+                    tr("settings.account.repeat"),
+                    Input::new(&repeat)
+                        .id("rotate-repeat")
+                        .aria_label(tr("settings.account.repeat"))
+                        .mask_toggle()
+                        .large(),
+                    cx,
+                ))
+                .children(mismatch.then(|| {
+                    div()
+                        .id("rotate-mismatch")
+                        .role(gpui_kit::Role::Status)
+                        .text_size(gpui_kit::rems(
+                            ramflux_desktop_navigation::palette(cx).size_secondary / 15.0,
+                        ))
+                        .text_color(ramflux_desktop_navigation::palette(cx).danger)
+                        .child(tr("settings.account.mismatch"))
+                }))
                 .child(
                     h_flex().child(
                         crate::style::primary_button("settings-rotate", cx)
                             .label(tr("settings.account.rotate"))
+                            .design_disabled(!ready, cx)
                             .on_click(move |_, window, cx| {
                                 let old = take(&current, window, cx);
                                 let new = take(&next, window, cx);
+                                let _ = take(&repeat, window, cx);
                                 let Some(account_id) = account.clone() else { return };
                                 let kind = IntentKind::RotatePassphrase {
                                     account_id,
@@ -546,10 +578,7 @@ fn app_lock_item(
             Some(line)
         } else {
             failure.map(|message| {
-                tr_args(
-                    "settings.app_lock.failed",
-                    &[("reason", &i18n::backend_text(&message))],
-                )
+                tr_args("settings.app_lock.failed", &[("reason", &i18n::backend_text(&message))])
             })
         };
         let section = section.children(status.map(|text| design::help(text, cx)));

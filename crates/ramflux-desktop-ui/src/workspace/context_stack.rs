@@ -341,7 +341,11 @@ fn entry(store: &Store, row: ConversationRow<'_>, filter: ListFilter) -> Option<
     } else {
         match row.preview {
             Preview::Text(text) => ramflux_desktop_navigation::row::list_text(text),
-            Preview::Deleted => tr("moment.message.deleted"),
+            Preview::Deleted => tr(if row.receipt.is_some() {
+                "moment.message.deleted_own"
+            } else {
+                "moment.message.deleted"
+            }),
             Preview::Unavailable => tr("navigation.not_loaded"),
             Preview::Attachment => tr("moment.message.attachment"),
             Preview::Activity => tr("navigation.activity"),

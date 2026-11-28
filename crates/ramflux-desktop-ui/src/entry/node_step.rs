@@ -9,16 +9,16 @@ use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::alert::Alert;
 use gpui_kit::component::button::Button;
+use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
-use gpui_kit::component::button::ButtonVariants as _;
-use std::rc::Rc;
 use gpui_kit::prelude::*;
 use gpui_kit::{Context, IntoElement, Role, SharedString, Window, div};
 use ramflux_desktop_core::{ListState, Listing, Node, UiEventKind, methods};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
+use std::rc::Rc;
 
 use super::node_card::Disclosure;
 use super::{EntryPage, NodeCard};

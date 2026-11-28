@@ -174,8 +174,10 @@ impl AgentRoster {
     fn groups(&self, cx: &App) -> gpui_kit::AnyElement {
         let theme = ramflux_desktop_navigation::palette(cx);
         let store = self.store.read(cx).store();
+        let loaded = !roster_groups(store).is_empty();
         let body = match store.agent_roster() {
-            AgentRosterState::Loading => {
+            // A loading line shows only while the list is empty.
+            AgentRosterState::Loading if !loaded => {
                 state_line("agents-roster-loading", tr("agents.roster.loading"), cx)
             }
             AgentRosterState::Offline => {
@@ -184,7 +186,7 @@ impl AgentRoster {
             AgentRosterState::Failed(refusal) => {
                 state_line("agents-roster-failed", tr(refusal_key(&refusal)), cx)
             }
-            AgentRosterState::Ready => {
+            AgentRosterState::Ready | AgentRosterState::Loading => {
                 let groups = roster_groups(store);
                 if groups.is_empty() {
                     state_line("agents-roster-empty", tr("agents.roster.empty"), cx)

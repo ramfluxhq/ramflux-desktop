@@ -53,17 +53,16 @@ pub fn render(
     let foreground = if outbound { palette.outgoing_text } else { cx.theme().foreground };
     let muted = if outbound { palette.outgoing_meta } else { cx.theme().muted_foreground };
     if payload.tombstone {
+        // One rule for both sides: the text says who deleted it.
+        let text =
+            tr(if outbound { "moment.message.deleted_own" } else { "moment.message.deleted" });
         return v_flex()
             .id("message-body")
             .text_size(text_secondary())
             .italic()
             .text_color(muted)
             .child(
-                div()
-                    .id("message-deleted")
-                    .aria_label(tr("moment.message.deleted"))
-                    .child(tr("moment.message.deleted"))
-                    .test_support(),
+                div().id("message-deleted").aria_label(text.clone()).child(text).test_support(),
             );
     }
     let attachment = payload.attachment.as_ref().map(|id| {
