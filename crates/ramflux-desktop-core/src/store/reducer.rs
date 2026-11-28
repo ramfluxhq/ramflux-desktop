@@ -64,6 +64,7 @@ impl Store {
                 let was_unlocked = was.is_some_and(|a| a.lock_state == LockState::Unlocked);
                 if was_unlocked && account.lock_state == LockState::Locked {
                     self.drop_bodies(changes);
+                    self.mls_clear(changes);
                 }
             }
             DomainEvent::AccountRemoved { account_id } => {

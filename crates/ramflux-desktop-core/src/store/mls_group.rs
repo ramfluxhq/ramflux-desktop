@@ -78,6 +78,27 @@ pub(crate) struct MlsState {
     parked: BTreeMap<String, Vec<OwnItem>>,
     /// Until when the daily limit of a group is used up.
     rate_locks: BTreeMap<String, Timestamp>,
+    /// The members picked for the next post of each group (anchor and the
+    /// name on the chip). Account-scoped: cleared with the rest on lock and
+    /// removal.
+    mentions: Picks,
+    /// A `post_state` that named a post no item carried yet (it arrived
+    /// before the send reply): applied when the reply gives the post id.
+    early_states: BTreeMap<(String, String), SendState>,
+}
+
+/// Early post states kept at most.
+const EARLY_STATES: usize = 64;
+
+/// Mention picks, behind a lock so the view can change them through the
+/// shared store (they are view input, not log facts).
+#[derive(Debug, Default)]
+struct Picks(parking_lot::Mutex<BTreeMap<String, Vec<(String, String)>>>);
+
+impl Clone for Picks {
+    fn clone(&self) -> Self {
+        Self(parking_lot::Mutex::new(self.0.lock().clone()))
+    }
 }
 
 /// The author of a post: its `author`, else the actor of a service row.
@@ -285,6 +306,36 @@ impl Store {
     /// sends nothing; a timer that lifts the lock only redraws.
     pub fn mls_rate_locked_until(&self, group_id: &str, now: Timestamp) -> Option<Timestamp> {
         self.mls.rate_locks.get(group_id).copied().filter(|until| until.0 > now.0)
+    }
+
+    /// The mentions picked for the next post of `group_id`: anchor and chip
+    /// name, in the order picked.
+    pub fn mls_mentions(&self, group_id: &str) -> Vec<(String, String)> {
+        self.mls.mentions.0.lock().get(group_id).cloned().unwrap_or_default()
+    }
+
+    /// Picks, or unpicks, a mention for the next post of `group_id`. Nothing
+    /// is kept while the account is locked, for a group that is not open for
+    /// posting, or beyond the mention limit.
+    pub fn mls_toggle_mention(&self, group_id: &str, anchor: &str, name: &str) {
+        if self.mls_locked() || self.mls.read_only.contains_key(group_id) {
+            return;
+        }
+        let mut all = self.mls.mentions.0.lock();
+        let picks = all.entry(group_id.to_owned()).or_default();
+        if let Some(ix) = picks.iter().position(|(a, _)| a == anchor) {
+            picks.remove(ix);
+        } else if picks.len() < mls::MAX_MENTIONS {
+            picks.push((anchor.to_owned(), name.to_owned()));
+        }
+        if picks.is_empty() {
+            all.remove(group_id);
+        }
+    }
+
+    /// Drops the picks of `group_id`: the send that carried them was accepted.
+    pub fn mls_mentions_spent(&self, group_id: &str) {
+        self.mls.mentions.0.lock().remove(group_id);
     }
 
     /// The account's own anchor, once any row said which one it is.
@@ -672,6 +723,7 @@ impl Store {
     /// it is kept, so a read-only chat stays readable).
     fn mls_drop_from_list(&mut self, group: &str, changes: &mut Changes) {
         self.mls.groups.remove(group);
+        self.mls.mentions.0.lock().remove(group);
         if !self.mls.timelines.contains_key(group) {
             let context = mls::context_id(group);
             if self.contexts.contains_key(&context) {
@@ -844,11 +896,16 @@ impl Store {
             };
             if let Some(tl) = self.mls.timelines.remove(&oldest) {
                 // A post still being sent, or not sent, is not evicted with the
-                // window: queued ones come back through history, these do not.
+                // window; neither is a queued or delayed one that has a post id,
+                // so a later `failed` still finds it. `merge_post` dedupes by
+                // post id when the timeline is reopened.
                 let kept: Vec<OwnItem> = tl
                     .own
                     .into_iter()
-                    .filter(|i| matches!(i.send, SendState::Submitting | SendState::NotSent(_)))
+                    .filter(|i| match i.send {
+                        SendState::Submitting | SendState::NotSent(_) => true,
+                        _ => i.post_id.is_some(),
+                    })
                     .collect();
                 if !kept.is_empty() {
                     self.mls.parked.insert(oldest.clone(), kept);
@@ -1046,11 +1103,22 @@ impl Store {
             if let Some(reason) = reason {
                 self.mls.read_only.insert(group.to_owned(), reason);
                 self.mls.groups.remove(group);
+                self.mls.mentions.0.lock().remove(group);
                 self.mls.info_wanted.remove(group);
                 changes.mls.insert(group.to_owned());
                 changes.mls.insert(String::new());
             }
         }
+    }
+
+    /// Keeps a post state that arrived before the send reply named its post.
+    fn mls_buffer_state(&mut self, group: &str, post_id: &str, state: SendState) {
+        if self.mls.early_states.len() >= EARLY_STATES
+            && let Some(oldest) = self.mls.early_states.keys().next().cloned()
+        {
+            self.mls.early_states.remove(&oldest);
+        }
+        self.mls.early_states.insert((group.to_owned(), post_id.to_owned()), state);
     }
 
     fn mls_post_state(
@@ -1066,16 +1134,25 @@ impl Store {
                 match state {
                     SendState::Sent { .. } => own.retain(|i| i.post_id.as_deref() != Some(post_id)),
                     other => {
+                        let mut found = false;
                         for item in own.iter_mut().filter(|i| i.post_id.as_deref() == Some(post_id))
                         {
                             item.send = other;
+                            found = true;
+                        }
+                        if !found {
+                            self.mls_buffer_state(group, post_id, other);
                         }
                     }
                 }
+            } else {
+                self.mls_buffer_state(group, post_id, state);
             }
             return;
         };
         let Some(ix) = tl.own.iter().position(|i| i.post_id.as_deref() == Some(post_id)) else {
+            // Before the send reply gave the post its id: keep it for then.
+            self.mls_buffer_state(group, post_id, state);
             return;
         };
         match state {
@@ -1155,6 +1232,7 @@ impl Store {
             LeaveResult::Committed => {
                 self.mls.leave_failure.remove(group);
                 self.mls.read_only.insert(group.to_owned(), ReadOnly::Left);
+                self.mls.mentions.0.lock().remove(group);
             }
             other => {
                 self.mls.leave_failure.insert(group.to_owned(), other.clone());
@@ -1300,6 +1378,10 @@ impl Store {
         changes: &mut Changes,
     ) {
         let my = self.mls.my_anchor.clone();
+        // A state that came by event before this reply is the newer one.
+        let state = post_id
+            .and_then(|id| self.mls.early_states.remove(&(group.to_owned(), id.to_owned())))
+            .unwrap_or(state);
         // A daily limit used up locks the composer until it resets.
         if let SendState::NotSent(NotSentReason::RateLimited {
             resets_at: Some(at),

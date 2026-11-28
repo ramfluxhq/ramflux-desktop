@@ -30,61 +30,23 @@ pub mod join;
 pub mod members;
 pub mod section;
 
-use std::cell::RefCell;
-
 use gpui_kit::SharedString;
-use ramflux_desktop_core::Timestamp;
 use ramflux_desktop_core::mls_group::{Author, MemberRow};
+use ramflux_desktop_core::{Store, Timestamp};
 
 use crate::i18n::{self, tr};
 
 pub use chrome::MentionPick;
 
-thread_local! {
-    /// The members picked for the next post of each group: anchors and the
-    /// names shown on their chips. In memory only; the next send takes them.
-    static MENTIONS: RefCell<Vec<(String, MentionPick)>> = const { RefCell::new(Vec::new()) };
-}
-
-/// Picks (or unpicks) a mention for the next post of `group_id`.
-pub fn toggle_mention(group_id: &str, anchor: &str, pick: MentionPick) {
-    MENTIONS.with(|m| {
-        let mut m = m.borrow_mut();
-        let key = (group_id.to_owned(), anchor.to_owned());
-        let tagged = format!("{}\0{}", key.0, key.1);
-        if let Some(ix) = m.iter().position(|(k, _)| *k == tagged) {
-            m.remove(ix);
-        } else if m.iter().filter(|(k, _)| k.starts_with(&format!("{group_id}\0"))).count()
-            < ramflux_desktop_core::mls_group::MAX_MENTIONS
-        {
-            m.push((tagged, pick));
-        }
-    });
-}
-
-/// The mentions picked for `group_id`, in the order picked.
-pub fn picked_mentions(group_id: &str) -> Vec<(String, MentionPick)> {
-    let prefix = format!("{group_id}\0");
-    MENTIONS.with(|m| {
-        m.borrow()
-            .iter()
-            .filter_map(|(k, v)| {
-                k.strip_prefix(&prefix).map(|anchor| (anchor.to_owned(), v.clone()))
-            })
-            .collect()
-    })
-}
-
-/// Takes the anchors picked for `group_id` (the next post carries them).
-pub fn take_mentions(group_id: &str) -> Vec<String> {
-    let prefix = format!("{group_id}\0");
-    MENTIONS.with(|m| {
-        let mut m = m.borrow_mut();
-        let taken =
-            m.iter().filter_map(|(k, _)| k.strip_prefix(&prefix).map(str::to_owned)).collect();
-        m.retain(|(k, _)| !k.starts_with(&prefix));
-        taken
-    })
+/// The mentions picked for `group_id`, in the order picked. They live in
+/// the account's store, so a lock, a removal or an account switch never
+/// shows or sends another account's picks.
+pub fn picked_mentions(store: &Store, group_id: &str) -> Vec<(String, MentionPick)> {
+    store
+        .mls_mentions(group_id)
+        .into_iter()
+        .map(|(anchor, name)| (anchor, MentionPick { name: name.into() }))
+        .collect()
 }
 
 /// A name as shown: "You", the display name (bidi-isolated), or "Member".

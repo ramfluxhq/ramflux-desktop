@@ -712,10 +712,9 @@ impl Render for Conversation {
         let mls_banner = mls_group
             .as_deref()
             .and_then(|g| super::mls_group::chrome::read_only_banner(store, g, cx));
-        let mls_strip = mls_group
-            .as_deref()
-            .zip(context_sink.clone())
-            .and_then(|(g, sink)| super::mls_group::chrome::mention_strip(store, g, sink, cx));
+        let mls_strip = mls_group.as_deref().zip(context_sink.clone()).and_then(|(g, sink)| {
+            super::mls_group::chrome::mention_strip(store, self.store.clone(), g, sink, cx)
+        });
         let body = match context_sink.filter(|_| !rows.is_empty()) {
             None => {
                 let no_contexts = store.contexts().next().is_none();

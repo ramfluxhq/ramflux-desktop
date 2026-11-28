@@ -427,7 +427,11 @@ fn mls_group_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
                 group_id: group_id.clone(),
                 text: text.clone(),
                 reply_to: None,
-                mentions: crate::workspace::mls_group::take_mentions(&group_id),
+                mentions: store
+                    .mls_mentions(&group_id)
+                    .into_iter()
+                    .map(|(anchor, _)| anchor)
+                    .collect(),
                 local_id: new_local_id(),
                 retry_of: None,
             }
@@ -438,7 +442,11 @@ fn mls_group_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
                 group_id: group_id.clone(),
                 text: text.clone(),
                 reply_to: mls_post_of(store, target),
-                mentions: crate::workspace::mls_group::take_mentions(&group_id),
+                mentions: store
+                    .mls_mentions(&group_id)
+                    .into_iter()
+                    .map(|(anchor, _)| anchor)
+                    .collect(),
                 local_id: new_local_id(),
                 retry_of: None,
             }
@@ -491,6 +499,27 @@ mod tests {
         assert!(intent_for(&orphan, s03.store()).is_none());
         let wrong_kind = at("c-ops", "m-approve", "decision", UiEventKind::CancelPressed);
         assert!(intent_for(&wrong_kind, s03.store()).is_none());
+    }
+
+    #[test]
+    fn mapping_a_group_post_reads_the_picked_mentions_and_keeps_them() {
+        let s03 = player("s03_intervention", 1_000);
+        let context = ramflux_desktop_core::mls_group::context_id("g-1");
+        s03.store().mls_toggle_mention("g-1", "anc-1", "Ann");
+        let event = UiEvent::new(
+            Scope::Panel("composer".into()),
+            UiEventKind::SubmitMessage { text: "hi".into() },
+        )
+        .within(Scope::Context(context))
+        .within(Scope::Workspace);
+        for _ in 0..2 {
+            // A send the policy then refuses must not have used the picks up.
+            assert!(matches!(
+                intent_for(&event, s03.store()),
+                Some(IntentKind::MlsGroupSend { mentions, .. }) if mentions == ["anc-1"]
+            ));
+        }
+        assert_eq!(s03.store().mls_mentions("g-1").len(), 1);
     }
 
     #[test]

@@ -95,6 +95,10 @@ struct MlsViews {
     /// Groups whose server notice was shown while the app runs (the notice
     /// is not kept on disk).
     noticed: std::collections::BTreeSet<(Option<ramflux_desktop_core::AccountId>, String)>,
+    /// The newest position a mark-read call was sent for, per account and
+    /// group: the same position is not sent again while the call runs or
+    /// until the group moves on or is opened again.
+    marked: std::collections::BTreeMap<(Option<ramflux_desktop_core::AccountId>, String), u64>,
 }
 
 /// One dock tool: its frame entity and the handle the dock engine holds.
@@ -187,6 +191,7 @@ impl Workspace {
             }),
             notice: cx.new(|cx| mls_group::info::MlsHostNotice::new(store.clone(), cx)),
             noticed: std::collections::BTreeSet::new(),
+            marked: std::collections::BTreeMap::new(),
         };
         let stack = cx.new(|cx| ContextStack::new(store.clone(), window, cx));
         let conversation =
@@ -277,6 +282,16 @@ impl Workspace {
                     if changes.touches_status() {
                         this.sync_composer(cx);
                         cx.notify();
+                    }
+                    if !changes.domain().accounts.is_empty() {
+                        // What was kept for a removed account goes with it.
+                        let known: std::collections::BTreeSet<_> =
+                            this.store.read(cx).accounts().cloned().collect();
+                        let kept = |who: &Option<ramflux_desktop_core::AccountId>| {
+                            who.as_ref().is_none_or(|id| known.contains(id))
+                        };
+                        this.mls.noticed.retain(|(who, _)| kept(who));
+                        this.mls.marked.retain(|(who, _), _| kept(who));
                     }
                     if !changes.domain().mls.is_empty() {
                         this.mls_mark_read(window, cx);
@@ -693,6 +708,9 @@ impl Workspace {
             return;
         };
         let sink = IntentRoot::sink(&self.root).scoped(Scope::Context(id.clone()));
+        // Opening again lets a mark-read that failed be sent once more.
+        let account = self.store.read(cx).active_account().cloned();
+        self.mls.marked.remove(&(account, group.clone()));
         let store = self.store.read(cx).store();
         let kept = store.mls_timeline(&group).is_some_and(|tl| tl.loaded);
         let read_only = store.mls_read_only(&group).is_some();
@@ -722,11 +740,19 @@ impl Workspace {
         if !window.is_window_active() {
             return;
         }
+        let account = self.store.read(cx).active_account().cloned();
         let store = self.store.read(cx).store();
         let Some(tl) = store.mls_timeline(&group).filter(|tl| tl.loaded) else { return };
         let read = store.mls_group(&group).map_or(u64::MAX, |g| g.read_log_seq);
         if tl.last_log_seq > read && store.mls_read_only(&group).is_none() {
             let log_seq = tl.last_log_seq;
+            // One call per position: the policy would let the same one pass
+            // until the reply moves `read_log_seq`.
+            let key = (account, group.clone());
+            if self.mls.marked.get(&key).is_some_and(|sent| *sent >= log_seq) {
+                return;
+            }
+            self.mls.marked.insert(key, log_seq);
             IntentRoot::sink(&self.root).scoped(Scope::Context(id)).emit(
                 UiEventKind::MlsMarkReadRequested { group_id: group, log_seq },
                 window,

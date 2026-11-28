@@ -244,7 +244,20 @@ impl IntentRoot {
             None => UiOutcome::Ignored,
             Some(intent) => {
                 let name = intent_name(&intent).to_owned();
+                // The picked mentions go with a post the policy accepted; a
+                // refused send keeps them.
+                let sent_in = match &intent.kind {
+                    IntentKind::MlsGroupSend { group_id, retry_of: None, .. } => {
+                        Some(group_id.clone())
+                    }
+                    _ => None,
+                };
                 let result = self.submit(intent, window, cx);
+                if let Some(group_id) = sent_in
+                    && result.starts_with(SUBMITTED)
+                {
+                    self.store.read(cx).store().mls_mentions_spent(&group_id);
+                }
                 UiOutcome::Intent { intent: name, result }
             }
         };
