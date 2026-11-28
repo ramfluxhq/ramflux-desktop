@@ -15,7 +15,7 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-const PINNED_REV: &str = "a48b182dd6cd5a6ff8e69056240b0a019f9513dc";
+const PINNED_REV: &str = "089f116572ace02f23b904eb868172d562d91a89";
 const PRODUCT_SOURCE: &str = "git+https://github.com/ramfluxhq/ramflux.git";
 const PRODUCT_CRATES: [&str; 11] = [
     "ramflux-card",
