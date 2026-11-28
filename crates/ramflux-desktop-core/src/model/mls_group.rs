@@ -1120,6 +1120,14 @@ pub enum MlsPanel {
         /// The invite.
         invite_id: String,
     },
+    /// The agents section (the admission hint's second action).
+    Agents,
+    /// Brings the placeholder of the messages this device could not read
+    /// into view.
+    Unreadable {
+        /// The group.
+        group_id: String,
+    },
     /// The join requests of a group.
     Requests {
         /// The group.

@@ -21,6 +21,7 @@
 //! - [`chrome`]: the conversation header, the read-only banner and the
 //!   mention strip.
 
+pub mod banners;
 pub mod chrome;
 pub mod confirm;
 pub mod create;
@@ -28,10 +29,12 @@ pub mod info;
 pub mod invite;
 pub mod join;
 pub mod members;
+pub mod requests;
 pub mod section;
+pub mod settings;
 
 use gpui_kit::SharedString;
-use ramflux_desktop_core::mls_group::{Author, MemberRow};
+use ramflux_desktop_core::mls_group::{Author, MemberRow, PrivacyDelay, Quota};
 use ramflux_desktop_core::{Store, Timestamp};
 
 use crate::i18n::{self, tr};
@@ -90,6 +93,43 @@ pub fn group_name(name: &str) -> SharedString {
 /// A time in the locale's date and time pattern.
 pub fn when(at: Timestamp) -> String {
     i18n::format::date_time(at)
+}
+
+/// Whether a quota is shown: on the first day, or when what is left is a
+/// fifth of the limit or less (at least one). Showing it changes nothing.
+pub fn quota_due(quota: &Quota) -> bool {
+    quota.first_day || quota.remaining <= (quota.limit / 5).max(1)
+}
+
+/// The line of the post quota (the composer area).
+pub fn post_quota_text(quota: &Quota) -> SharedString {
+    let args = [("left", quota.remaining.to_string()), ("limit", quota.limit.to_string())];
+    let args = [(args[0].0, args[0].1.as_str()), (args[1].0, args[1].1.as_str())];
+    i18n::tr_args(
+        if quota.first_day { "group.quota.post_first_day" } else { "group.quota.post" },
+        &args,
+    )
+}
+
+/// The line of the commit quota (the group info).
+pub fn commit_quota_text(quota: &Quota) -> SharedString {
+    let left = quota.remaining.to_string();
+    let limit = quota.limit.to_string();
+    i18n::tr_args("group.quota.commit", &[("left", &left), ("limit", &limit)])
+}
+
+/// When a post sent now goes out, while that is after `now` (the privacy
+/// delay with a time in the future); a time in the past reads as no time.
+pub fn privacy_eta(delay: &PrivacyDelay, now: Timestamp) -> Option<Timestamp> {
+    match delay {
+        PrivacyDelay::Waiting(at) if at.0 > now.0 => Some(*at),
+        _ => None,
+    }
+}
+
+/// Whether the privacy delay is armed (a time in the past counts as armed).
+pub fn privacy_armed(delay: &PrivacyDelay) -> bool {
+    !matches!(delay, PrivacyDelay::None)
 }
 
 /// A wait as the join and rate texts show it: minutes under an hour, else

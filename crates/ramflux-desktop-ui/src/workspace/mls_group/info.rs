@@ -22,12 +22,15 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     Context, Entity, FocusHandle, IntoElement, Render, Role, Subscription, Window, div,
 };
-use ramflux_desktop_core::mls_group::{self as mls, LeaveResult, PushSetting};
+use ramflux_desktop_core::mls_group::{
+    self as mls, AdminKind, LeaveResult, PushSetting, WarningCode,
+};
 use ramflux_desktop_core::{Scope, UiEventKind};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
-use super::group_name;
+use super::banners::warning_text;
+use super::{commit_quota_text, group_name, privacy_armed, quota_due};
 use crate::app::{StoreEvent, StoreHandle};
 use crate::bubble::EventSink;
 use crate::i18n::{self, tr, tr_args, tr_count};
@@ -73,6 +76,21 @@ impl MlsInfo {
     /// Opens the panel of `group_id` and reads the group.
     pub fn open(&mut self, group_id: String, window: &mut Window, cx: &mut Context<Self>) {
         self.sink.emit(UiEventKind::MlsInfoRequested { group_id: group_id.clone() }, window, cx);
+        // An owner or admin of an approval group gets the first page of
+        // requests too, once (not while it is loaded or loading).
+        let wanted = {
+            let store = self.store.read(cx).store();
+            store.mls_is_admin(&group_id)
+                && store.mls_group(&group_id).is_some_and(|g| g.approval)
+                && store.mls_requests(&group_id).is_none_or(|p| !p.loaded && !p.loading)
+        };
+        if wanted {
+            self.sink.emit(
+                UiEventKind::MlsRequestsRequested { group_id: group_id.clone(), cursor: None },
+                window,
+                cx,
+            );
+        }
         self.group = Some(group_id);
         window.focus(&self.focus, cx);
         cx.notify();
@@ -122,11 +140,22 @@ impl Render for MlsInfo {
             .render(cx);
         };
         let fact = |text: gpui_kit::SharedString| div().text_size(text_secondary()).child(text);
-        let push = match summary.push {
-            PushSetting::MentionsReplies => "group.push.mentions_replies",
-            PushSetting::All => "group.push.all",
-            PushSetting::None => "group.push.none",
-            PushSetting::Unknown(_) => "group.push.mentions_replies",
+        let store = self.store.read(cx).store();
+        let admin = store.mls_is_admin(&group);
+        let push_saving = store.mls_push_saving(&group).cloned();
+        let push_failed = store.mls_push_failed(&group);
+        let host_ip = store.mls_host_ip_visible(&group);
+        let warnings: Vec<WarningCode> = store.mls_warnings(&group).into_iter().cloned().collect();
+        let requests = store.mls_requests(&group).map(|p| (p.rows.len(), p.cursor.is_some()));
+        let commit_quota = summary.quota_commit.clone().filter(quota_due);
+        let admin_failure = store
+            .mls_admin_failure(&group)
+            .filter(|f| f.kind == AdminKind::Settings)
+            .map(|f| f.code.clone());
+        let _ = admin_failure;
+        let push_current = match summary.push {
+            PushSetting::MentionsReplies | PushSetting::Unknown(_) => PushSetting::MentionsReplies,
+            ref other => other.clone(),
         };
         let approval =
             if summary.approval { "group.info.approval_on" } else { "group.info.approval_off" };
@@ -159,14 +188,155 @@ impl Render for MlsInfo {
                 }
                 facts
             })))
-            .children(summary.host_ip_visible().then(|| {
+            .children(host_ip.then(|| {
                 div().id("mls-info-host").test_support().text_size(text_secondary()).child(tr_args(
                     "group.warning.host_ip_visible",
                     &[("host", &i18n::bidi::ltr(&summary.host_node))],
                 ))
             }))
             .child(fact(tr(approval)))
-            .child(fact(i18n::labeled(&tr("group.info.push"), &tr(push))))
+            .children(
+                // The picker is this device's mode: every member of a group
+                // that takes posts may change it (hidden once read only).
+                read_only.is_none().then(|| {
+                    let choices = [
+                        (PushSetting::MentionsReplies, "group.push.mentions_replies"),
+                        (PushSetting::All, "group.push.all"),
+                        (PushSetting::None, "group.push.none"),
+                    ];
+                    v_flex()
+                        .id("mls-info-push")
+                        .test_support()
+                        .gap(space(1.))
+                        .child(
+                            div()
+                                .text_size(text_secondary())
+                                .font_semibold()
+                                .child(tr("group.push.title")),
+                        )
+                        .child(
+                            div()
+                                .text_size(text_caption())
+                                .text_color(muted)
+                                .child(tr("group.push.help")),
+                        )
+                        .child(h_flex().gap(space(2.)).flex_wrap().children(
+                            choices.into_iter().enumerate().map(|(ix, (choice, key))| {
+                                let chosen = push_current == choice;
+                                let saving = push_saving.as_ref() == Some(&choice);
+                                let group = group.clone();
+                                let label = if saving { tr("group.push.saving") } else { tr(key) };
+                                let button = Button::new(gpui_kit::SharedString::from(format!(
+                                    "mls-info-push-{ix}"
+                                )));
+                                let button = if chosen {
+                                    button.design_primary(cx)
+                                } else {
+                                    button.design_secondary(cx)
+                                };
+                                button
+                                    .design_label(label)
+                                    .design_disabled(push_saving.is_some() || chosen, cx)
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.sink.emit(
+                                            UiEventKind::MlsPushPressed {
+                                                group_id: group.clone(),
+                                                push: choice.clone(),
+                                            },
+                                            window,
+                                            cx,
+                                        );
+                                    }))
+                            }),
+                        ))
+                        .children(push_failed.then(|| {
+                            div()
+                                .id("mls-info-push-failed")
+                                .role(Role::Alert)
+                                .text_size(text_caption())
+                                .text_color(danger)
+                                .child(tr("group.push.failed"))
+                        }))
+                }),
+            )
+            .children(privacy_armed(&summary.privacy_delay).then(|| {
+                div()
+                    .id("mls-info-privacy-delay")
+                    .test_support()
+                    .text_size(text_secondary())
+                    .child(tr("group.privacy_delay.info"))
+            }))
+            .children(commit_quota.map(|quota| {
+                div()
+                    .id("mls-info-commit-quota")
+                    .test_support()
+                    .text_size(text_secondary())
+                    .child(commit_quota_text(&quota))
+            }))
+            // Every warning repeats its banner text here; an unknown code
+            // reads generic. The admission row carries the hint actions.
+            .children(
+                warnings
+                    .iter()
+                    .filter(|w| !matches!(w, WarningCode::HostIpVisible { .. }))
+                    .enumerate()
+                    .map(|(ix, code)| {
+                        let hint = matches!(code, WarningCode::AdmissionNeedsOnline)
+                            && read_only.is_none();
+                        let group = group.clone();
+                        v_flex()
+                            .id(gpui_kit::SharedString::from(format!("mls-info-warning-{ix}")))
+                            .test_support()
+                            .gap(space(1.))
+                            .child(div().text_size(text_secondary()).child(warning_text(code)))
+                            .children(hint.then(|| {
+                                v_flex()
+                                    .gap(space(1.))
+                                    .child(
+                                        div()
+                                            .text_size(text_caption())
+                                            .text_color(muted)
+                                            .child(tr("group.hint.agent.desktop")),
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .gap(space(2.))
+                                            .child(
+                                                Button::new("mls-info-hint-invite")
+                                                    .design_secondary(cx)
+                                                    .design_label(tr("group.hint.agent.invite"))
+                                                    .on_click(cx.listener(
+                                                        move |this, _, window, cx| {
+                                                            this.panel(
+                                                                mls::MlsPanel::Invites {
+                                                                    group_id: group.clone(),
+                                                                },
+                                                                window,
+                                                                cx,
+                                                            );
+                                                        },
+                                                    )),
+                                            )
+                                            .child(
+                                                Button::new("mls-info-hint-agents")
+                                                    .design_secondary(cx)
+                                                    .design_label(tr(
+                                                        "group.hint.agent.open_agents",
+                                                    ))
+                                                    .on_click(cx.listener(
+                                                        |this, _, window, cx| {
+                                                            this.panel(
+                                                                mls::MlsPanel::Agents,
+                                                                window,
+                                                                cx,
+                                                            );
+                                                        },
+                                                    )),
+                                            ),
+                                    )
+                            }))
+                    }),
+            )
             .children(read_only.map(|reason| {
                 div()
                     .id("mls-info-read-only")
@@ -191,6 +361,48 @@ impl Render for MlsInfo {
                 h_flex()
                     .gap(space(2.))
                     .flex_wrap()
+                    // The admin entries: the join requests of an approval group
+                    // (with the count of the rows loaded) and the settings.
+                    .children((admin && summary.approval).then(|| {
+                        let label = match requests {
+                            Some((count, more)) if more => tr_args(
+                                "group.requests.entry_more",
+                                &[("count", &count.to_string())],
+                            ),
+                            Some((count, _)) if count > 0 => {
+                                tr_count("group.requests.entry", count as u64)
+                            }
+                            _ => tr("group.requests.title"),
+                        };
+                        Button::new("mls-info-requests")
+                            .design_secondary(cx)
+                            .design_label(label)
+                            .on_click({
+                                let group = group.clone();
+                                cx.listener(move |this, _, window, cx| {
+                                    this.panel(
+                                        mls::MlsPanel::Requests { group_id: group.clone() },
+                                        window,
+                                        cx,
+                                    );
+                                })
+                            })
+                    }))
+                    .children(admin.then(|| {
+                        Button::new("mls-info-settings")
+                            .design_secondary(cx)
+                            .design_label(tr("group.settings.entry"))
+                            .on_click({
+                                let group = group.clone();
+                                cx.listener(move |this, _, window, cx| {
+                                    this.panel(
+                                        mls::MlsPanel::Settings { group_id: group.clone() },
+                                        window,
+                                        cx,
+                                    );
+                                })
+                            })
+                    }))
                     // The invites entry is gone once the group is read only.
                     .children(read_only.is_none().then(|| {
                         Button::new("mls-info-invites")

@@ -17,6 +17,7 @@
 
 use std::rc::Rc;
 
+use crate::style::DesignButton as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -29,7 +30,9 @@ use gpui_kit::{
     Context, Entity, FocusHandle, IntoElement, Pixels, Render, Role, SharedString, Size,
     Subscription, Window, div, px, size,
 };
-use ramflux_desktop_core::mls_group::{MemberRow, MlsRole};
+use ramflux_desktop_core::mls_group::{
+    self as mls, AdminKind, AdminTarget, MemberRow, MlsPanel, MlsRole, OpaqueId,
+};
 use ramflux_desktop_core::{Scope, UiEventKind};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
@@ -71,6 +74,8 @@ struct Item {
     ai: bool,
     devices: u32,
     me: bool,
+    /// Whether this account may act on the member (by its role).
+    actions: bool,
 }
 
 /// The panel and its view-local state.
@@ -85,6 +90,9 @@ pub struct MlsMembers {
     scroll: VirtualListScrollHandle,
     /// The cursor the page last asked for was asked with.
     asked: Option<Option<String>>,
+    /// The member whose actions are shown (view-local; nothing is sent by
+    /// choosing one).
+    menu: Option<String>,
     focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
 }
@@ -125,6 +133,7 @@ impl MlsMembers {
             sizes: Rc::new(Vec::new()),
             scroll: VirtualListScrollHandle::new(),
             asked: None,
+            menu: None,
             focus: cx.focus_handle(),
             _subscriptions: subscriptions,
         }
@@ -140,6 +149,7 @@ impl MlsMembers {
     ) {
         self.mode = if mentions { Mode::Mentions } else { Mode::List };
         self.asked = None;
+        self.menu = None;
         self.search.update(cx, |search, cx| search.set_value("", window, cx));
         let loaded = self.store.read(cx).store().mls_members(&group_id).is_some_and(|p| p.loaded);
         if !loaded {
@@ -157,6 +167,7 @@ impl MlsMembers {
 
     /// Closes the panel.
     pub fn close(&mut self, cx: &mut Context<Self>) {
+        self.menu = None;
         if self.group.take().is_some() {
             cx.notify();
         }
@@ -173,6 +184,129 @@ impl MlsMembers {
         self.sink.emit(UiEventKind::MlsMembersRequested { group_id, cursor }, window, cx);
     }
 
+    fn panel(&mut self, panel: MlsPanel, window: &mut Window, cx: &mut Context<Self>) {
+        self.sink.emit(UiEventKind::MlsPanelRequested { panel }, window, cx);
+    }
+
+    /// The actions on the chosen member (common 3.3): the owner may make an
+    /// admin of a member or a member of an admin, remove and ban; an admin may
+    /// remove and ban plain members. Another action holding the group, or
+    /// paced commits, turns the buttons off with the typed text. Choosing one
+    /// opens its confirmation; nothing is sent here.
+    fn action_bar(&mut self, group: &str, cx: &mut Context<Self>) -> Option<gpui_kit::AnyElement> {
+        let anchor = self.menu.clone()?;
+        let now = self.store.read(cx).session().map(|s| s.now()).unwrap_or_default();
+        let (row, owner, busy, paced, failure) = {
+            let store = self.store.read(cx).store();
+            let row = store.mls_members(group).and_then(|p| p.rows.get(&anchor)).cloned();
+            (
+                row,
+                store.mls_is_owner(group),
+                store.mls_admin_busy(group),
+                store.mls_paced_until(group, now),
+                store
+                    .mls_admin_failure(group)
+                    .filter(|f| {
+                        matches!(f.kind, AdminKind::Role | AdminKind::Remove | AdminKind::Ban)
+                    })
+                    .cloned(),
+            )
+        };
+        let row = row?;
+        let admin_row = row.role == MlsRole::Admin;
+        let allowed = match row.role {
+            MlsRole::Owner | MlsRole::Unknown(_) => false,
+            MlsRole::Admin => owner,
+            MlsRole::Member => self.store.read(cx).store().mls_is_admin(group),
+        };
+        if row.is_me || !allowed {
+            return None;
+        }
+        let muted = cx.theme().muted_foreground;
+        let danger = crate::tone::text(cx.theme().danger, cx);
+        let id = OpaqueId::new(anchor);
+        let off = busy || paced.is_some();
+        let group = group.to_owned();
+        let button =
+            |key: &'static str, label: &'static str, panel: MlsPanel, cx: &mut Context<Self>| {
+                Button::new(key)
+                    .design_secondary(cx)
+                    .design_label(tr(label))
+                    .design_disabled(off, cx)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.panel(panel.clone(), window, cx);
+                    }))
+            };
+        let role_button = owner.then(|| {
+            let (key, label) = if admin_row {
+                ("mls-member-make-member", "group.member.action.make_member")
+            } else {
+                ("mls-member-make-admin", "group.member.action.make_admin")
+            };
+            button(
+                key,
+                label,
+                MlsPanel::ConfirmRole {
+                    group_id: group.clone(),
+                    anchor: id.clone(),
+                    admin: !admin_row,
+                },
+                cx,
+            )
+        });
+        let remove = button(
+            "mls-member-remove",
+            "group.member.action.remove",
+            MlsPanel::ConfirmRemove { group_id: group.clone(), anchor: id.clone() },
+            cx,
+        );
+        let ban = button(
+            "mls-member-ban",
+            "group.member.action.ban",
+            MlsPanel::ConfirmBan { group_id: group.clone(), anchor: id },
+            cx,
+        );
+        let status = if let Some(until) = paced {
+            Some((
+                tr_args("group.error.paced", &[("time", &crate::i18n::time_of_day(until))]),
+                muted,
+            ))
+        } else if busy {
+            Some((tr("group.member.action.busy"), muted))
+        } else {
+            failure.map(|f| (tr(mls::error_key(&f.code)), danger))
+        };
+        Some(
+            v_flex()
+                .id("mls-member-actions")
+                .test_support()
+                .gap(space(2.))
+                .child(
+                    div()
+                        .text_size(text_caption())
+                        .text_color(muted)
+                        .child(i18n::labeled(&tr("group.member.action.menu"), &member_name(&row))),
+                )
+                .child(
+                    h_flex()
+                        .gap(space(2.))
+                        .flex_wrap()
+                        .children(role_button)
+                        .child(remove)
+                        .child(ban),
+                )
+                .children(status.map(|(text, color)| {
+                    div()
+                        .id("mls-member-actions-status")
+                        .role(Role::Status)
+                        .text_size(text_caption())
+                        .text_color(color)
+                        .child(text)
+                }))
+                .into_any_element(),
+        )
+    }
+
     fn build(&self, cx: &gpui_kit::App) -> (Vec<Line>, bool) {
         let Some(group) = self.group.as_deref() else { return (Vec::new(), false) };
         let store = self.store.read(cx).store();
@@ -184,12 +318,25 @@ impl MlsMembers {
                 |r: &MemberRow| (!r.is_me, r.display.clone().unwrap_or_default().to_lowercase());
             key(a).cmp(&key(b))
         });
+        let owner = store.mls_is_owner(group);
+        let admin = store.mls_is_admin(group);
+        let list = self.mode == Mode::List;
         let item = |row: &MemberRow| Item {
             anchor: row.anchor.clone(),
             name: member_name(row),
             ai: row.ai_flag || store.mls_is_ai(group, &row.anchor),
             devices: row.devices,
             me: row.is_me,
+            // Owner: every row but its own and the owner's. Admin: plain
+            // members only. A member, a read-only group and the mention
+            // picker: none.
+            actions: list
+                && !row.is_me
+                && match row.role {
+                    MlsRole::Owner | MlsRole::Unknown(_) => false,
+                    MlsRole::Admin => owner,
+                    MlsRole::Member => admin,
+                },
         };
         let matches = |row: &&MemberRow| {
             query.is_empty()
@@ -350,6 +497,23 @@ impl Render for MlsMembers {
                                 let label = item.name.clone();
                                 let pick_name = item.name.clone();
                                 let me = item.me;
+                                let group = this.group.clone().unwrap_or_default();
+                                // The row reads "Updating…" while the admin slot
+                                // holds an action on this member.
+                                let updating = this
+                                    .store
+                                    .read(cx)
+                                    .store()
+                                    .mls_admin_action(&group)
+                                    .is_some_and(|a| {
+                                        matches!(
+                                            a.kind,
+                                            AdminKind::Role | AdminKind::Remove | AdminKind::Ban
+                                        ) && matches!(&a.target, AdminTarget::Member { anchor: t, .. } if t.expose() == anchor)
+                                    });
+                                let actions = item.actions;
+                                let chosen = this.menu.as_deref() == Some(anchor.as_str());
+                                let menu_anchor = anchor.clone();
                                 let content = h_flex()
                                     .h(gpui_kit::rems(ROW_PX / 15.0))
                                     .gap(space(2.))
@@ -359,12 +523,37 @@ impl Render for MlsMembers {
                                         ai.then(|| crate::identity::ai_mark("mls-member-ai", cx)),
                                     )
                                     .child(div().flex_1())
+                                    .children(updating.then(|| {
+                                        div()
+                                            .id(SharedString::from(format!("mls-member-updating-{ix}")))
+                                            .role(Role::Status)
+                                            .text_size(text_caption())
+                                            .text_color(muted)
+                                            .child(tr("group.member.action.updating"))
+                                    }))
                                     .child(
                                         div()
                                             .text_size(text_caption())
                                             .text_color(muted)
                                             .child(devices),
-                                    );
+                                    )
+                                    .children(actions.then(|| {
+                                        Button::new(SharedString::from(format!("mls-member-menu-{ix}")))
+                                            .ghost()
+                                            .small()
+                                            .icon(gpui_kit::assets::IconName::Ellipsis)
+                                            .accessibility_label(tr("group.member.action.menu"))
+                                            .tooltip(tr("group.member.action.menu"))
+                                            .selected(chosen)
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.menu = if this.menu.as_deref() == Some(menu_anchor.as_str()) {
+                                                    None
+                                                } else {
+                                                    Some(menu_anchor.clone())
+                                                };
+                                                cx.notify();
+                                            }))
+                                    }));
                                 if this.mode == Mode::Mentions && !me {
                                     Button::new(SharedString::from(format!("mls-member-{anchor}")))
                                         .ghost()
@@ -397,6 +586,7 @@ impl Render for MlsMembers {
         )
         .track_scroll(&self.scroll);
         let empty = self.lines.is_empty() && loaded;
+        let bar = self.action_bar(&group, cx);
         let this = cx.weak_entity();
         let body = v_flex()
             .id("mls-members-body")
@@ -410,6 +600,7 @@ impl Render for MlsMembers {
                 cx,
             ))
             .child(div().h(gpui_kit::rems(360.0 / 15.0)).min_h_0().child(list))
+            .children(bar)
             .children(empty.then(|| {
                 div()
                     .id("mls-members-empty")

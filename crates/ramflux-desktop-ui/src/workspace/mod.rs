@@ -91,6 +91,8 @@ struct MlsViews {
     members: Entity<mls_group::members::MlsMembers>,
     info: Entity<mls_group::info::MlsInfo>,
     confirm: Entity<mls_group::confirm::MlsConfirm>,
+    requests: Entity<mls_group::requests::MlsRequests>,
+    settings: Entity<mls_group::settings::MlsSettings>,
     notice: Entity<mls_group::info::MlsHostNotice>,
     /// Groups whose server notice was shown while the app runs (the notice
     /// is not kept on disk).
@@ -188,6 +190,12 @@ impl Workspace {
                 .new(|cx| mls_group::info::MlsInfo::new(store.clone(), sink.clone(), window, cx)),
             confirm: cx.new(|cx| {
                 mls_group::confirm::MlsConfirm::new(store.clone(), sink.clone(), window, cx)
+            }),
+            requests: cx.new(|cx| {
+                mls_group::requests::MlsRequests::new(store.clone(), sink.clone(), window, cx)
+            }),
+            settings: cx.new(|cx| {
+                mls_group::settings::MlsSettings::new(store.clone(), sink.clone(), window, cx)
             }),
             notice: cx.new(|cx| mls_group::info::MlsHostNotice::new(store.clone(), cx)),
             noticed: std::collections::BTreeSet::new(),
@@ -455,6 +463,8 @@ impl Workspace {
             cx.observe(&mls.members, |_, _, cx| cx.notify()),
             cx.observe(&mls.info, |_, _, cx| cx.notify()),
             cx.observe(&mls.confirm, |_, _, cx| cx.notify()),
+            cx.observe(&mls.requests, |_, _, cx| cx.notify()),
+            cx.observe(&mls.settings, |_, _, cx| cx.notify()),
             cx.observe(&mls.notice, |_, _, cx| cx.notify()),
             cx.observe(&strangers, |_, _, cx| cx.notify()),
             cx.observe(&contacts, |_, _, cx| cx.notify()),
@@ -786,12 +796,7 @@ impl Workspace {
             }
             confirm @ (MlsPanel::ConfirmDelete { .. }
             | MlsPanel::ConfirmLeave { .. }
-            | MlsPanel::ConfirmRevoke { .. }) => {
-                self.mls.confirm.update(cx, |d, cx| d.open(confirm, window, cx));
-            }
-            // The M3 panels are routed with their views.
-            MlsPanel::Requests { .. }
-            | MlsPanel::Settings { .. }
+            | MlsPanel::ConfirmRevoke { .. }
             | MlsPanel::ConfirmApprove { .. }
             | MlsPanel::ConfirmDecline { .. }
             | MlsPanel::ConfirmRole { .. }
@@ -799,9 +804,57 @@ impl Workspace {
             | MlsPanel::ConfirmBan { .. }
             | MlsPanel::ConfirmVoid { .. }
             | MlsPanel::ConfirmSkip { .. }
-            | MlsPanel::ConfirmApprovalOff { .. } => {}
+            | MlsPanel::ConfirmApprovalOff { .. }) => {
+                self.mls.confirm.update(cx, |d, cx| d.open(confirm, window, cx));
+            }
+            MlsPanel::Requests { group_id } => {
+                self.mls.requests.update(cx, |d, cx| d.open(group_id, window, cx));
+            }
+            MlsPanel::Settings { group_id } => {
+                self.mls.settings.update(cx, |d, cx| d.open(group_id, window, cx));
+            }
+            // The admission hint's second action: the agents section. Nothing
+            // is created there by opening it.
+            MlsPanel::Agents => {
+                self.mls.info.update(cx, |d, cx| d.close(cx));
+                self.mls.confirm.update(cx, |d, cx| d.close(cx));
+                self.navigate(WorkspaceRoute::Agents, window, cx);
+            }
+            MlsPanel::Unreadable { group_id } => self.show_unreadable(&group_id, window, cx),
         }
         cx.notify();
+    }
+
+    /// Brings the placeholder row of the messages this device could not read
+    /// into view: the older page it may sit in is asked for through the
+    /// existing paging path (once), then the row is scrolled to.
+    fn show_unreadable(&mut self, group_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        use ramflux_desktop_core::mls_group::{HistoryDirection, WarningCode};
+        let id = ramflux_desktop_core::mls_group::context_id(group_id);
+        let ask = {
+            let store = self.store.read(cx).store();
+            let from = store.mls_warnings(group_id).into_iter().find_map(|w| match w {
+                WarningCode::Undecryptable { from_log_seq, .. } => *from_log_seq,
+                _ => None,
+            });
+            store.mls_timeline(group_id).and_then(|tl| {
+                let oldest = tl.posted.keys().next().copied()?;
+                (tl.more_older && !tl.older_in_flight && from.is_some_and(|f| f < oldest))
+                    .then_some(oldest)
+            })
+        };
+        if let Some(oldest) = ask {
+            IntentRoot::sink(&self.root).scoped(Scope::Context(id)).emit(
+                UiEventKind::MlsHistoryRequested {
+                    group_id: group_id.to_owned(),
+                    direction: HistoryDirection::Before(oldest),
+                },
+                window,
+                cx,
+            );
+        }
+        let moment = ramflux_desktop_core::MomentId::new(format!("mls:{group_id}:undecryptable"));
+        self.conversation.update(cx, |field, cx| field.focus_moment(&moment, cx));
     }
 
     /// Opens the new-group dialog over the shown screen and focuses its
@@ -1347,6 +1400,8 @@ impl Render for Workspace {
             .child(self.mls.invites.clone())
             .child(self.mls.members.clone())
             .child(self.mls.info.clone())
+            .child(self.mls.requests.clone())
+            .child(self.mls.settings.clone())
             .child(self.mls.notice.clone())
             .child(self.mls.confirm.clone())
     }

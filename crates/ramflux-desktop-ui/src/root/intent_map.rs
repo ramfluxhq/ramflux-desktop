@@ -404,6 +404,42 @@ fn mls_group_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
         UiEventKind::MlsLeavePressed { group_id } => {
             IntentKind::MlsGroupLeave { group_id: group_id.clone() }
         }
+        // The admin and edge states (M3): one intent per confirmed press. The
+        // epoch and the action id are stamped by the policy.
+        UiEventKind::MlsRequestsRequested { group_id, cursor } => {
+            IntentKind::MlsRequestsList { group_id: group_id.clone(), cursor: cursor.clone() }
+        }
+        UiEventKind::MlsApprovePressed { group_id, request_id } => IntentKind::MlsRequestApprove {
+            group_id: group_id.clone(),
+            request_id: request_id.clone(),
+        },
+        UiEventKind::MlsDeclinePressed { group_id, request_id } => IntentKind::MlsRequestDecline {
+            group_id: group_id.clone(),
+            request_id: request_id.clone(),
+        },
+        UiEventKind::MlsRolePressed { group_id, anchor, admin } => IntentKind::MlsRoleSet {
+            group_id: group_id.clone(),
+            anchor: anchor.clone(),
+            admin: *admin,
+        },
+        UiEventKind::MlsRemovePressed { group_id, anchor } => {
+            IntentKind::MlsMemberRemove { group_id: group_id.clone(), anchor: anchor.clone() }
+        }
+        UiEventKind::MlsBanPressed { group_id, anchor } => {
+            IntentKind::MlsMemberBan { group_id: group_id.clone(), anchor: anchor.clone() }
+        }
+        UiEventKind::MlsSettingsPressed { group_id, field } => {
+            IntentKind::MlsSettingsSet { group_id: group_id.clone(), field: field.clone() }
+        }
+        UiEventKind::MlsPushPressed { group_id, push } => {
+            IntentKind::MlsPushSet { group_id: group_id.clone(), push: push.clone() }
+        }
+        UiEventKind::MlsSkipPressed { group_id } => {
+            IntentKind::MlsCatchUpSkip { group_id: group_id.clone() }
+        }
+        UiEventKind::MlsVoidPressed { group_id, log_seq } => {
+            IntentKind::MlsVoid { group_id: group_id.clone(), log_seq: *log_seq }
+        }
         UiEventKind::MlsRetryPressed { context, local_id } => {
             let group_id = mls_group::group_of(context)?.to_owned();
             let item = store
