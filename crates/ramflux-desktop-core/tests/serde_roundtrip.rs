@@ -7,6 +7,7 @@
 //! sample here fails to compile or fails the coverage assertion.
 
 mod common;
+mod mls_samples;
 
 use std::collections::BTreeSet;
 
@@ -93,9 +94,29 @@ fn domain_event_name(event: &DomainEvent) -> &'static str {
         DomainEvent::AgentCursorReset => "AgentCursorReset",
         DomainEvent::AgentJobsUpdated { .. } => "AgentJobsUpdated",
         DomainEvent::AgentApprovalsUpdated(_) => "AgentApprovalsUpdated",
+        DomainEvent::MlsStarted(_) => "MlsStarted",
+        DomainEvent::MlsGroupsListed{ .. } => "MlsGroupsListed",
+        DomainEvent::MlsFailed{ .. } => "MlsFailed",
+        DomainEvent::MlsGroupInfoRead{ .. } => "MlsGroupInfoRead",
+        DomainEvent::MlsMembersPage{ .. } => "MlsMembersPage",
+        DomainEvent::MlsHistoryPage{ .. } => "MlsHistoryPage",
+        DomainEvent::MlsGroupEvent{ .. } => "MlsGroupEvent",
+        DomainEvent::MlsCreated{ .. } => "MlsCreated",
+        DomainEvent::MlsCreateFailed{ .. } => "MlsCreateFailed",
+        DomainEvent::MlsInviteCreated{ .. } => "MlsInviteCreated",
+        DomainEvent::MlsInvitesListed{ .. } => "MlsInvitesListed",
+        DomainEvent::MlsInviteRevoked{ .. } => "MlsInviteRevoked",
+        DomainEvent::MlsJoinOutcome{ .. } => "MlsJoinOutcome",
+        DomainEvent::MlsJoinPendingListed{ .. } => "MlsJoinPendingListed",
+        DomainEvent::MlsSendOutcome{ .. } => "MlsSendOutcome",
+        DomainEvent::MlsDeleteOutcome{ .. } => "MlsDeleteOutcome",
+        DomainEvent::MlsLeft{ .. } => "MlsLeft",
+        DomainEvent::MlsRefreshed{ .. } => "MlsRefreshed",
+        DomainEvent::MlsMarkedRead{ .. } => "MlsMarkedRead",
+        DomainEvent::MlsUnavailable{ .. } => "MlsUnavailable",
     }
 }
-const DOMAIN_EVENT_VARIANTS: usize = 72;
+const DOMAIN_EVENT_VARIANTS: usize = 92;
 
 fn moment_kind_name(kind: &MomentKind) -> &'static str {
     match kind {
@@ -117,9 +138,10 @@ fn moment_kind_name(kind: &MomentKind) -> &'static str {
         MomentKind::Call(_) => "Call",
         MomentKind::NameChange(_) => "NameChange",
         MomentKind::GroupRename(_) => "GroupRename",
+        MomentKind::MlsService(_) => "MlsService",
     }
 }
-const MOMENT_KIND_VARIANTS: usize = 18;
+const MOMENT_KIND_VARIANTS: usize = 19;
 
 fn intent_kind_name(kind: &IntentKind) -> &'static str {
     match kind {
@@ -232,10 +254,25 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         | IntentKind::ConfirmRecovery { .. }
         | IntentKind::RotatePassphrase { .. }
         | IntentKind::ClaimUsername { .. } => "secret",
+        IntentKind::MlsGroupList { .. } => "MlsGroupList",
+        IntentKind::MlsGroupInfo { .. } => "MlsGroupInfo",
+        IntentKind::MlsGroupMembers { .. } => "MlsGroupMembers",
+        IntentKind::MlsGroupHistory { .. } => "MlsGroupHistory",
+        IntentKind::MlsGroupRefresh { .. } => "MlsGroupRefresh",
+        IntentKind::MlsGroupMarkRead { .. } => "MlsGroupMarkRead",
+        IntentKind::MlsGroupCreate { .. } => "MlsGroupCreate",
+        IntentKind::MlsInviteCreate { .. } => "MlsInviteCreate",
+        IntentKind::MlsInviteList { .. } => "MlsInviteList",
+        IntentKind::MlsInviteRevoke { .. } => "MlsInviteRevoke",
+        IntentKind::MlsGroupJoin { .. } => "MlsGroupJoin",
+        IntentKind::MlsGroupSend { .. } => "MlsGroupSend",
+        IntentKind::MlsGroupDelete { .. } => "MlsGroupDelete",
+        IntentKind::MlsGroupLeave { .. } => "MlsGroupLeave",
+        IntentKind::MlsJoinPending => "MlsJoinPending",
     }
 }
 /// Serializable intent variants (all but the seven secret-carrying kinds).
-const SERIALIZABLE_INTENT_VARIANTS: usize = 100;
+const SERIALIZABLE_INTENT_VARIANTS: usize = 115;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
     match kind {
@@ -303,11 +340,32 @@ fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
         UiEventKind::ClearRequestFloorsPressed => "ClearRequestFloorsPressed",
         UiEventKind::CallAnswered { .. } => "CallAnswered",
         UiEventKind::CallHangUpPressed { .. } => "CallHangUpPressed",
+        UiEventKind::MlsListRequested { .. } => "MlsListRequested",
+        UiEventKind::MlsInfoRequested { .. } => "MlsInfoRequested",
+        UiEventKind::MlsMembersRequested { .. } => "MlsMembersRequested",
+        UiEventKind::MlsHistoryRequested { .. } => "MlsHistoryRequested",
+        UiEventKind::MlsRefreshPressed { .. } => "MlsRefreshPressed",
+        UiEventKind::MlsMarkReadRequested { .. } => "MlsMarkReadRequested",
+        UiEventKind::MlsCreatePressed { .. } => "MlsCreatePressed",
+        UiEventKind::MlsInviteCreatePressed { .. } => "MlsInviteCreatePressed",
+        UiEventKind::MlsInviteListRequested { .. } => "MlsInviteListRequested",
+        UiEventKind::MlsInviteRevokePressed { .. } => "MlsInviteRevokePressed",
+        UiEventKind::MlsJoinPressed { .. } => "MlsJoinPressed",
+        UiEventKind::MlsRetryPressed { .. } => "MlsRetryPressed",
+        UiEventKind::MlsDeletePressed { .. } => "MlsDeletePressed",
+        UiEventKind::MlsLeavePressed { .. } => "MlsLeavePressed",
+        UiEventKind::MlsJoinPendingRequested => "MlsJoinPendingRequested",
     }
 }
-const UI_EVENT_KIND_VARIANTS: usize = 64;
+const UI_EVENT_KIND_VARIANTS: usize = 79;
 
 fn all_moment_kinds() -> Vec<MomentKind> {
+    let mut all = all_moment_kinds_base();
+    all.extend(vec![MomentKind::MlsService(mls_group::MlsServiceLine::Floor)]);
+    all
+}
+
+fn all_moment_kinds_base() -> Vec<MomentKind> {
     vec![
         message("hello"),
         surface("s-1"),
@@ -386,6 +444,12 @@ fn all_moment_kinds() -> Vec<MomentKind> {
 }
 
 fn all_domain_events() -> Vec<DomainEvent> {
+    let mut all = all_domain_events_base();
+    all.extend(mls_samples::events());
+    all
+}
+
+fn all_domain_events_base() -> Vec<DomainEvent> {
     let mut events = vec![
         DomainEvent::AccountUpdated(Account {
             id: AccountId::new("a-1"),
@@ -955,6 +1019,12 @@ fn sample_creation() -> AgentCreation {
 }
 
 fn all_intent_kinds() -> Vec<IntentKind> {
+    let mut all = all_intent_kinds_base();
+    all.extend(mls_samples::intents());
+    all
+}
+
+fn all_intent_kinds_base() -> Vec<IntentKind> {
     vec![
         IntentKind::AnswerContactRequest {
             request_id: "rq-1".to_owned(),
@@ -1192,6 +1262,12 @@ fn all_intent_kinds() -> Vec<IntentKind> {
 }
 
 fn all_ui_event_kinds() -> Vec<UiEventKind> {
+    let mut all = all_ui_event_kinds_base();
+    all.extend(mls_samples::ui_events());
+    all
+}
+
+fn all_ui_event_kinds_base() -> Vec<UiEventKind> {
     vec![
         UiEventKind::RetryMessagePressed,
         UiEventKind::CopyMessagePressed,

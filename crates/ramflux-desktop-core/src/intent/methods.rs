@@ -126,6 +126,41 @@ pub const GROUP_LEAVE: &str = "group.leave";
 pub const GROUP_INVITATION_ACCEPT: &str = "group.invitation.accept";
 /// Decline an invitation to a group.
 pub const GROUP_INVITATION_DECLINE: &str = "group.invitation.decline";
+/// List this account's MLS groups (wire `group.list`).
+pub const MLS_GROUP_LIST: &str = "mls_group.list";
+/// Read one MLS group (wire `group.info`).
+pub const MLS_GROUP_INFO: &str = "mls_group.info";
+/// Create an MLS group (wire `group.create`).
+pub const MLS_GROUP_CREATE: &str = "mls_group.create";
+/// Create an invite of an MLS group (wire `group.invite.create`).
+pub const MLS_GROUP_INVITE_CREATE: &str = "mls_group.invite.create";
+/// List the invites this account created (wire `group.invite.list`).
+pub const MLS_GROUP_INVITE_LIST: &str = "mls_group.invite.list";
+/// Revoke an invite (wire `group.invite.revoke`).
+pub const MLS_GROUP_INVITE_REVOKE: &str = "mls_group.invite.revoke";
+/// Join a group with a link (wire `group.join`).
+pub const MLS_GROUP_JOIN: &str = "mls_group.join";
+/// Read the join requests the SDK holds (wire `group.join.pending`).
+pub const MLS_GROUP_JOIN_PENDING: &str = "mls_group.join.pending";
+/// Read a page of members (wire `group.members`).
+pub const MLS_GROUP_MEMBERS: &str = "mls_group.members";
+/// Read a page of history (wire `group.history`).
+pub const MLS_GROUP_HISTORY: &str = "mls_group.history";
+/// Send a text post (wire `group.send`).
+pub const MLS_GROUP_SEND: &str = "mls_group.send";
+/// Fetch from the group host now (wire `group.refresh`).
+pub const MLS_GROUP_REFRESH: &str = "mls_group.refresh";
+/// Move the read position (wire `group.mark_read`).
+pub const MLS_GROUP_MARK_READ: &str = "mls_group.mark_read";
+/// Delete an own post for everyone (wire `group.message.delete`).
+pub const MLS_GROUP_MESSAGE_DELETE: &str = "mls_group.message.delete";
+/// Leave a group (wire `group.leave`).
+pub const MLS_GROUP_LEAVE: &str = "mls_group.leave";
+
+/// Whether `method` is a contract method of the MLS groups.
+pub fn is_mls_group(method: &str) -> bool {
+    method.starts_with("mls_group.")
+}
 /// Add a contact by the username they claimed (`@name`).
 pub const USERNAME_CONTACT_ADD: &str = "username.contact.add";
 

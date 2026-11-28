@@ -331,4 +331,43 @@ pub enum IntentError {
     /// Only a person's account has a recovery phrase.
     #[error("only a person's account can be recovered with a phrase")]
     RecoveryNotForKind,
+    /// The account is locked: MLS groups take no call.
+    #[error("the account is locked")]
+    MlsLocked,
+    /// No such MLS group is known.
+    #[error("unknown group")]
+    MlsGroupUnknown,
+    /// The group takes no posts and no refresh from this account.
+    #[error("this group is read only")]
+    MlsReadOnly,
+    /// The link failed the local check.
+    #[error("the invite link is not valid")]
+    MlsLinkInvalid,
+    /// A join call is in flight for this account.
+    #[error("a join is in flight")]
+    MlsJoinBusy,
+    /// The join attempt is not the next one.
+    #[error("the join attempt is not the next one")]
+    MlsJoinAttempt,
+    /// The group name is blank or too long.
+    #[error("the group name must be 1 to 64 characters")]
+    MlsNameInvalid,
+    /// The text is blank, or has too many mentions.
+    #[error("the post is empty or has too many mentions")]
+    MlsPostInvalid,
+    /// The bubble to retry is not one that was not sent.
+    #[error("there is no unsent post to retry")]
+    MlsNothingToRetry,
+    /// The group was refreshed less than five seconds ago.
+    #[error("the group was refreshed just now")]
+    MlsRefreshCoalesced,
+    /// The read position is there already.
+    #[error("the group is read up to there already")]
+    MlsAlreadyRead,
+    /// Only an own post that is in the log can be deleted.
+    #[error("only an own post in the log can be deleted")]
+    MlsNotOwnPost,
+    /// The invite settings are not offered.
+    #[error("the invite settings are not valid")]
+    MlsInviteInvalid,
 }

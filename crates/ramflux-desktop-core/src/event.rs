@@ -16,7 +16,12 @@ use crate::model::{
 };
 
 use crate::card_event::CardEvent;
+use crate::model::mls_group::{
+    DeleteResult, GroupEventKind, HistoryDirection, Invite, JoinOutcome, JoinRecord, LeaveResult,
+    MemberRow, MlsGroupSummary, Post, SendState,
+};
 pub use crate::surface_event::{SurfaceEvent, SurfaceSnapshot};
+use serde_json::Value as JsonValue;
 
 /// Schema tag carried by every envelope. The store rejects any other value.
 pub const EVENT_SCHEMA: &str = "ramflux.desktop.event.v1";
@@ -495,4 +500,293 @@ pub enum DomainEvent {
     },
     /// The approvals of agents waiting for an answer (the whole list).
     AgentApprovalsUpdated(Vec<AgentApproval>),
+    /// A call of an MLS group method was accepted by the source and is on
+    /// its way (the join owner, the send owner and the gap guard record it).
+    MlsStarted(MlsStart),
+    /// A page of `group.list`. A first page keeps the rows until it arrives;
+    /// the rows no page names are dropped when the last page is in.
+    MlsGroupsListed {
+        /// The rows of the page.
+        rows: Vec<MlsGroupSummary>,
+        /// The cursor of the next page; `None` at the end.
+        cursor: Option<String>,
+        /// Whether this is the first page of a listing.
+        first_page: bool,
+    },
+    /// A typed failure of an MLS group method (the code only).
+    MlsFailed {
+        /// The contract method.
+        method: String,
+        /// The group, when the call named one.
+        #[serde(default)]
+        group_id: Option<String>,
+        /// The invite, when the call named one.
+        #[serde(default)]
+        invite_id: Option<String>,
+        /// The error code.
+        code: String,
+    },
+    /// `group.info` of one group.
+    MlsGroupInfoRead {
+        /// The group as it is now.
+        summary: Box<MlsGroupSummary>,
+    },
+    /// A page of `group.members`, or its failure.
+    MlsMembersPage {
+        /// The group.
+        group_id: String,
+        /// The rows.
+        rows: Vec<MemberRow>,
+        /// The cursor of the next page; `None` at the end.
+        cursor: Option<String>,
+        /// The error code when the page failed.
+        #[serde(default)]
+        failed: Option<String>,
+    },
+    /// A page of `group.history`.
+    MlsHistoryPage {
+        /// The group.
+        group_id: String,
+        /// How it was asked for.
+        direction: HistoryDirection,
+        /// The posts.
+        posts: Vec<Post>,
+        /// The first position this device can show.
+        floor_log_seq: Option<u64>,
+        /// The newest position.
+        last_log_seq: u64,
+        /// More rows in the direction asked.
+        more: bool,
+    },
+    /// A `group.event` frame.
+    MlsGroupEvent {
+        /// The account log sequence of the frame.
+        seq: u64,
+        /// The group.
+        group_id: String,
+        /// The position the envelope names, when it does.
+        #[serde(default)]
+        log_seq: Option<u64>,
+        /// What happened.
+        kind: GroupEventKind,
+    },
+    /// `group.create` answered.
+    MlsCreated {
+        /// The new group.
+        group_id: String,
+        /// The name it was created with.
+        name: String,
+        /// Whether new members need approval.
+        approval: bool,
+        /// The first invite.
+        invite: Invite,
+    },
+    /// `group.create` was refused.
+    MlsCreateFailed {
+        /// The error code.
+        code: String,
+    },
+    /// An invite was created.
+    MlsInviteCreated {
+        /// The group.
+        group_id: String,
+        /// The invite.
+        invite: Invite,
+    },
+    /// The invites this account created.
+    MlsInvitesListed {
+        /// The group.
+        group_id: String,
+        /// The invites.
+        invites: Vec<Invite>,
+    },
+    /// An invite was revoked (the reply came).
+    MlsInviteRevoked {
+        /// The group.
+        group_id: String,
+        /// The invite.
+        invite_id: String,
+    },
+    /// What one join attempt came to. A joined or pending outcome of an
+    /// older attempt is recorded all the same.
+    MlsJoinOutcome {
+        /// The attempt.
+        attempt: u64,
+        /// The outcome.
+        outcome: JoinOutcome,
+    },
+    /// The pending join requests the SDK holds (`group.join.pending`).
+    MlsJoinPendingListed {
+        /// The requests.
+        records: Vec<JoinRecord>,
+    },
+    /// What a send came to.
+    MlsSendOutcome {
+        /// The group.
+        group_id: String,
+        /// The client id of the submit.
+        local_id: String,
+        /// The SDK's post id, when it answered.
+        #[serde(default)]
+        post_id: Option<String>,
+        /// The state.
+        state: SendState,
+    },
+    /// What a delete came to.
+    MlsDeleteOutcome {
+        /// The group.
+        group_id: String,
+        /// The post.
+        post_id: String,
+        /// The result.
+        result: DeleteResult,
+    },
+    /// What a leave came to.
+    MlsLeft {
+        /// The group.
+        group_id: String,
+        /// The result.
+        result: LeaveResult,
+    },
+    /// `group.refresh` answered for a group.
+    MlsRefreshed {
+        /// The group.
+        group_id: String,
+        /// The newest position the host reported.
+        last_log_seq: u64,
+    },
+    /// `group.mark_read` answered.
+    MlsMarkedRead {
+        /// The group.
+        group_id: String,
+        /// The position read up to.
+        read_log_seq: u64,
+        /// Unread posts.
+        unread: u32,
+        /// Unread mentions.
+        unread_mentions: u32,
+    },
+    /// A new method of the MLS groups is not available on this source.
+    MlsUnavailable {
+        /// The contract method.
+        method: String,
+        /// The group the call named.
+        #[serde(default)]
+        group_id: Option<String>,
+        /// The join attempt the call carried.
+        #[serde(default)]
+        attempt: Option<u64>,
+        /// The send the call carried.
+        #[serde(default)]
+        local_id: Option<String>,
+    },
+}
+
+/// A call of an MLS group method that the source accepted.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum MlsStart {
+    /// A join attempt (the link is not here).
+    Join {
+        /// The attempt.
+        attempt: u64,
+    },
+    /// A send.
+    Send {
+        /// The group.
+        group_id: String,
+        /// The client id.
+        local_id: String,
+        /// The text.
+        text: String,
+        /// The reply target.
+        #[serde(default)]
+        reply_to: Option<String>,
+        /// Mentioned anchors.
+        #[serde(default)]
+        mentions: Vec<String>,
+        /// The `NotSent` bubble this send replaces.
+        #[serde(default)]
+        retry_of: Option<String>,
+    },
+    /// A history read.
+    History {
+        /// The group.
+        group_id: String,
+        /// The direction.
+        direction: HistoryDirection,
+    },
+    /// A refresh.
+    Refresh {
+        /// The group.
+        group_id: String,
+    },
+    /// A delete.
+    Delete {
+        /// The group.
+        group_id: String,
+        /// The post.
+        post_id: String,
+    },
+    /// A leave.
+    Leave {
+        /// The group.
+        group_id: String,
+    },
+    /// A create.
+    Create,
+    /// A page of the group list.
+    List,
+    /// A read of one group.
+    Info {
+        /// The group.
+        group_id: String,
+    },
+}
+
+impl DomainEvent {
+    /// The `MlsStarted` fact for an accepted call of an MLS group method,
+    /// read from the call body the policy built. A source emits it when it
+    /// takes the call, before any answer, so the join owner, the send owner
+    /// and the gap guard know what is on its way. `None` for a method that
+    /// needs no such record.
+    pub fn mls_started(method: &str, body: &JsonValue) -> Option<Self> {
+        use crate::intent::methods as m;
+        let text = |field: &str| body.get(field).and_then(JsonValue::as_str).map(str::to_owned);
+        let group = || text("group_id");
+        let start = match method {
+            m::MLS_GROUP_JOIN => MlsStart::Join { attempt: body.get("attempt")?.as_u64()? },
+            m::MLS_GROUP_SEND => MlsStart::Send {
+                group_id: group()?,
+                local_id: text("local_id")?,
+                text: text("text")?,
+                reply_to: text("reply_to"),
+                mentions: body
+                    .get("mentions")
+                    .and_then(JsonValue::as_array)
+                    .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
+                    .unwrap_or_default(),
+                retry_of: text("retry_of"),
+            },
+            m::MLS_GROUP_HISTORY => {
+                let direction = if let Some(ls) = body.get("before_log_seq").and_then(JsonValue::as_u64) {
+                    HistoryDirection::Before(ls)
+                } else if let Some(ls) = body.get("after_log_seq").and_then(JsonValue::as_u64) {
+                    HistoryDirection::After(ls)
+                } else {
+                    HistoryDirection::Newest
+                };
+                MlsStart::History { group_id: group()?, direction }
+            }
+            m::MLS_GROUP_REFRESH => MlsStart::Refresh { group_id: group()? },
+            m::MLS_GROUP_MESSAGE_DELETE => {
+                MlsStart::Delete { group_id: group()?, post_id: text("post_id")? }
+            }
+            m::MLS_GROUP_LEAVE => MlsStart::Leave { group_id: group()? },
+            m::MLS_GROUP_CREATE => MlsStart::Create,
+            m::MLS_GROUP_LIST => MlsStart::List,
+            m::MLS_GROUP_INFO => MlsStart::Info { group_id: group()? },
+            _ => return None,
+        };
+        Some(Self::MlsStarted(start))
+    }
 }

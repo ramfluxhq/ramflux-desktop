@@ -114,6 +114,21 @@ pub enum Receipt {
     Delivered,
     /// Read by the recipient.
     Read,
+    /// An MLS group post the SDK holds and sends by itself.
+    Queued {
+        /// Why it waits.
+        reason: super::mls_group::QueueReason,
+    },
+    /// An MLS group post the SDK delays for privacy.
+    Delayed {
+        /// When it is sent, around.
+        send_after: Timestamp,
+    },
+    /// An MLS group post that was not sent; only Retry sends it again.
+    NotSent {
+        /// Why.
+        reason: super::mls_group::NotSentReason,
+    },
 }
 
 /// Payload of a [`MomentKind::AgentSurface`]: the card's fallback text and
@@ -448,6 +463,9 @@ pub enum MomentKind {
     Call(CallPayload),
     /// The group's signed name changed.
     GroupRename(GroupRenamePayload),
+    /// A service line of an MLS group (membership, settings, void, a
+    /// deleted message, the floor).
+    MlsService(super::mls_group::MlsServiceLine),
 }
 
 /// A moment in a context timeline.

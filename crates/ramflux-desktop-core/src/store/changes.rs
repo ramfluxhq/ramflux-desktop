@@ -326,6 +326,9 @@ pub struct Changes {
     /// The source status, backend capabilities, daemon info or the failed
     /// effects changed.
     pub source_status: bool,
+    /// MLS group state changed: the groups touched (the empty string stands
+    /// for account-level state such as the group list and the join owner).
+    pub mls: BTreeSet<String>,
 }
 
 impl Changes {
@@ -358,6 +361,7 @@ impl Changes {
             && !self.listings
             && !self.bodies_cleared
             && !self.source_status
+            && self.mls.is_empty()
     }
 
     /// Adds every change of `other` to `self`.
@@ -390,6 +394,7 @@ impl Changes {
             listings,
             bodies_cleared,
             source_status,
+            mls,
         } = other;
         self.accounts.extend(accounts);
         self.app_locks.extend(app_locks);
@@ -420,5 +425,6 @@ impl Changes {
         self.listings |= listings;
         self.bodies_cleared |= bodies_cleared;
         self.source_status |= source_status;
+        self.mls.extend(mls);
     }
 }

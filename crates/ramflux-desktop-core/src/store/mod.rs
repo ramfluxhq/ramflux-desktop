@@ -18,6 +18,8 @@
 //! - `calls`: voice calls and their timeline records.
 //! - `identity`: contact identity changes and the security of direct
 //!   conversations.
+//! - `mls_group`: the MLS groups of the account, their timelines and the
+//!   join and send owners.
 //! - `contact_requests`: contact requests both ways.
 //! - `backup`: full backup and restore jobs.
 //! - `ceremony`: the creation ceremony of a born-v3 account.
@@ -35,6 +37,7 @@ mod changes;
 mod contact_requests;
 mod identity;
 mod index;
+mod mls_group;
 mod recovery;
 mod reducer;
 mod surface_events;
@@ -171,6 +174,8 @@ pub struct Store {
     rejections: Vec<Rejection>,
     index: Indexes,
     bodies: BodyCache,
+    /// MLS groups of the account (in memory only).
+    mls: mls_group::MlsState,
 }
 
 impl Store {

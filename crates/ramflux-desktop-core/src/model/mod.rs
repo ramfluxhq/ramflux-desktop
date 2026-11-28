@@ -45,6 +45,7 @@ mod identity;
 mod integrations;
 mod listing;
 mod message_v1;
+pub mod mls_group;
 mod moment;
 mod object;
 mod order;

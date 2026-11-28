@@ -15,6 +15,7 @@
 //! - `contacts`: adding contacts and acting on contact links.
 //! - `start`: starting a direct conversation with a contact.
 //! - `groups`: creating and renaming a group.
+//! - `mls_group`: MLS groups: joining, creating, invites, posts and leaving.
 //! - `calls`: placing, answering, declining and hanging up voice calls.
 //! - `accounts`: entry (accounts, devices, nodes) and settings.
 //! - `backup`: full backup and restore.
@@ -35,6 +36,7 @@ mod error;
 mod governance;
 mod groups;
 mod identity;
+mod mls_group;
 mod moments;
 mod recovery;
 mod start;
@@ -164,6 +166,7 @@ pub fn handle_intent(
         .or_else(|| identity::decide(&policy, &intent.kind))
         .or_else(|| start::decide(&policy, &intent.kind))
         .or_else(|| groups::decide(&policy, &intent.kind))
+        .or_else(|| mls_group::decide(&policy, &intent.kind))
         .or_else(|| calls::decide(&policy, &intent.kind))
         .or_else(|| accounts::decide(&policy, &intent.kind))
         .or_else(|| backup::decide(&policy, &intent.kind))

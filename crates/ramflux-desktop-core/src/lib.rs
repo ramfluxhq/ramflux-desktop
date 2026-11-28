@@ -53,7 +53,7 @@ pub use card_event::{
     CardStatus, https_host,
 };
 pub use event::{
-    DomainEvent, EVENT_SCHEMA, EventEnvelope, SourceStatus, SurfaceEvent, SurfaceSnapshot,
+    DomainEvent, EVENT_SCHEMA, EventEnvelope, MlsStart, SourceStatus, SurfaceEvent, SurfaceSnapshot,
 };
 pub use ids::{
     AccountId, BackupJobId, BlockId, CallId, ContextId, DeviceId, GrantId, MomentId, NodeId,
@@ -65,6 +65,7 @@ pub use intent::{
     SecretInput, SyncDirection, check_contact_card, check_contact_id, classify_contact_input,
     methods,
 };
+pub use model::mls_group;
 pub use model::*;
 pub use policy::{
     GroupProblem, IntentError, MAX_GROUP_MEMBERS, MAX_GROUP_TITLE_LEN, call_peer,

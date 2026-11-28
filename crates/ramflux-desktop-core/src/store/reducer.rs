@@ -78,6 +78,7 @@ impl Store {
                 changes.app_locks.insert(account_id.clone());
                 changes.app_lock_codes.insert(account_id.clone());
                 self.drop_bodies(changes);
+                self.mls_clear(changes);
             }
             DomainEvent::AccountLockChanged { account_id, lock_state } => {
                 // An unlock that succeeded leaves no refusal of its code on screen.
@@ -177,6 +178,26 @@ impl Store {
             DomainEvent::SendBlockedByIdentity { context, participant, moment } => {
                 self.send_blocked_by_identity(context, participant, moment, changes)?;
             }
+            DomainEvent::MlsStarted(_)
+            | DomainEvent::MlsGroupsListed { .. }
+            | DomainEvent::MlsFailed { .. }
+            | DomainEvent::MlsGroupInfoRead { .. }
+            | DomainEvent::MlsMembersPage { .. }
+            | DomainEvent::MlsHistoryPage { .. }
+            | DomainEvent::MlsGroupEvent { .. }
+            | DomainEvent::MlsCreated { .. }
+            | DomainEvent::MlsCreateFailed { .. }
+            | DomainEvent::MlsInviteCreated { .. }
+            | DomainEvent::MlsInvitesListed { .. }
+            | DomainEvent::MlsInviteRevoked { .. }
+            | DomainEvent::MlsJoinOutcome { .. }
+            | DomainEvent::MlsJoinPendingListed { .. }
+            | DomainEvent::MlsSendOutcome { .. }
+            | DomainEvent::MlsDeleteOutcome { .. }
+            | DomainEvent::MlsLeft { .. }
+            | DomainEvent::MlsRefreshed { .. }
+            | DomainEvent::MlsMarkedRead { .. }
+            | DomainEvent::MlsUnavailable { .. } => self.mls_reduce(at, event, changes)?,
             DomainEvent::ContextUpserted(context) => self.upsert_context(context, changes),
             DomainEvent::ContextSettingsChanged { context_id, pinned, muted, disappearing } => {
                 self.context_settings(context_id, *pinned, *muted, *disappearing, changes)?;
@@ -541,6 +562,7 @@ impl Store {
         let closed = lock.state == AppLockState::Locked;
         if closed && before.is_none_or(|b| b.state != AppLockState::Locked) {
             self.drop_bodies(changes);
+            self.mls_clear(changes);
         }
     }
 
@@ -559,6 +581,7 @@ impl Store {
         changes.accounts.insert(account_id.clone());
         if locking {
             self.drop_bodies(changes);
+            self.mls_clear(changes);
         }
         Ok(())
     }
@@ -625,7 +648,7 @@ impl Store {
         Ok(())
     }
 
-    fn upsert_context(&mut self, context: &Context, changes: &mut Changes) {
+    pub(super) fn upsert_context(&mut self, context: &Context, changes: &mut Changes) {
         self.sync_pin_order(&context.id, context.pinned, changes);
         changes.contexts.insert(context.id.clone());
         let old = self.contexts.insert(context.id.clone(), context.clone());
@@ -675,7 +698,7 @@ impl Store {
         Ok(())
     }
 
-    fn remove_context(
+    pub(super) fn remove_context(
         &mut self,
         context_id: &ContextId,
         changes: &mut Changes,
@@ -764,7 +787,7 @@ impl Store {
         Ok(())
     }
 
-    fn update_moment(
+    pub(super) fn update_moment(
         &mut self,
         at: Timestamp,
         moment_id: &MomentId,

@@ -323,6 +323,9 @@ pub enum ContextKind {
     Group,
     /// Long-lived shared space.
     Space,
+    /// An MLS group (`mls:<group_id>`); its timeline lives in the store's
+    /// MLS state and is projected into moments.
+    MlsGroup,
 }
 
 /// Member role in a group or space: exactly the daemon's roles.

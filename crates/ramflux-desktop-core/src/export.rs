@@ -60,6 +60,7 @@ fn body(store: &Store, moment: &Moment) -> String {
             format!("[identity] {:?} for {}", p.change, p.participant_id)
         }
         MomentKind::SecurityNotice(p) => format!("[security] {:?}", p.warning),
+        MomentKind::MlsService(_) => "[group update]".to_owned(),
         MomentKind::Governance(p) => format!("[membership] {:?} {}", p.action, p.target),
         MomentKind::ContactRequest(p) => format!("[contact request] from {}", p.from),
         MomentKind::Conflict(p) => {
