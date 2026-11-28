@@ -56,8 +56,16 @@ impl Workspace {
             WorkspaceRoute::Groups => {
                 self.group_shown = false;
                 let current = self.current.clone();
-                self.groups.update(cx, |groups, cx| groups.set_selected(current, cx));
-                self.groups.update(cx, |groups, cx| groups.focus_search(window, cx));
+                // W: remove the old directory and this switch.
+                if self.shows_mls_groups(cx) {
+                    self.mls.section.update(cx, |section, cx| {
+                        section.set_selected(current, cx);
+                        section.opened(window, cx);
+                    });
+                } else {
+                    self.groups.update(cx, |groups, cx| groups.set_selected(current, cx));
+                    self.groups.update(cx, |groups, cx| groups.focus_search(window, cx));
+                }
             }
             WorkspaceRoute::Contacts => {
                 self.close_dock(window, cx);
@@ -112,8 +120,12 @@ impl Workspace {
     }
 
     /// The list pane of the current route.
-    pub(super) fn section_list(&self) -> AnyElement {
+    pub(super) fn section_list(&self, cx: &gpui_kit::App) -> AnyElement {
         match self.route {
+            // W: remove the old directory and this switch.
+            WorkspaceRoute::Groups if !self.store.read(cx).is_live() => {
+                self.mls.section.clone().into_any_element()
+            }
             WorkspaceRoute::Groups => self.groups.clone().into_any_element(),
             WorkspaceRoute::Contacts => self.contact_directory.clone().into_any_element(),
             WorkspaceRoute::Strangers => self.strangers.clone().into_any_element(),
@@ -175,7 +187,10 @@ impl Workspace {
         self.list_visible = true;
         match self.route {
             WorkspaceRoute::Groups => {
-                self.groups.update(cx, |groups, cx| groups.focus_search(window, cx));
+                // W: remove the old directory and this switch.
+                if !self.shows_mls_groups(cx) {
+                    self.groups.update(cx, |groups, cx| groups.focus_search(window, cx));
+                }
             }
             WorkspaceRoute::Contacts => {
                 self.contact_directory.update(cx, |list, cx| list.focus_search(window, cx));

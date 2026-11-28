@@ -1,0 +1,54 @@
+// s12 MLS groups (MLS GUI batch M2, fixtures F2-1 to F2-10). The groups are
+// served by the handler `mock_mls` (crates/ramflux-desktop-test), not by the
+// timeline: this file only sets the account up. The handler is active only
+// while this scenario is loaded, and counts every `mls_group.*` call (the
+// developer panel shows "mock calls: <method> N").
+//
+// How to reach each fixture (Groups route in the rail):
+//   F2-1  Groups list: 120 groups in three pages of 50 (cursors l2, l3); page 2
+//         repeats one group with a newer time. "Design" (owner, 12 members,
+//         1 agent), "Neighbours" (member, 987), "Book club" (admin, 3,
+//         catch-up spinner). Scroll to the end.
+//   F2-2  Open "Neighbours", Members: 5 pages, 4 agents, one "You", 30 members
+//         with no name. Page 3 fails once (host_unreachable): Try again. Type
+//         in the search field: the remaining pages load.
+//   F2-3  Open "Design" and scroll to the top: 260 posts, a deleted one, a
+//         membership row of 15 joins, a name change, an undone change, an
+//         unknown kind, and the floor line.
+//   F2-4  Open any group and send 6 messages: sent; queued (catching up, then
+//         sent by an event); delayed for privacy (then failed by an event);
+//         rate limited (the composer is off for 20 s, then Retry works);
+//         too large (Retry); an unknown state (queued).
+//         The first send is also repeated by a `post` event: no extra row.
+//   F2-5  Join with a link (group list, link button): rfinv-joined,
+//         rfinv-admin (pending), rfinv-online (pending, then joined after
+//         5 s), rfinv-slow (joined after 4 s), rfinv-down (host_unreachable),
+//         rfinv-unknownreason (refused "banana"), and one refusal each:
+//         rfinv-refused-<link_invalid|invite_expired|invite_invalid|group_full|
+//         queue_full|request_expired|already_member|rate_limited>. A link of
+//         513 characters or with a space fails the local check: no call.
+//   F2-6  New group, then the invite panel (link, Copy link, presets, New link,
+//         the list with a revoked and an expired invite). Revoke answers after
+//         2 s. A name with the word "refuse" is refused (tier_unavailable).
+//   F2-7  Open "Design": its first refresh brings a removal, a ban, a role
+//         change, a device added (not shown) and a settings row (approval
+//         off), 1.5 s apart. Open "Book club": 3 s after its first refresh
+//         this account is removed: the chat becomes read only.
+//   F2-8  Leave: "Design" (owner) answers owner_protected; any other group
+//         answers committed, then a membership event drops it from the list.
+//   F2-9  "Scale test": 1000 members and 20,000 posts, generated per page.
+//   F2-10 Delete for everyone on an own posted message (send one first):
+//         "Deleting..." for 2 s, then the tombstone (an event repeats it once).
+//         The second delete of the session answers not_author.
+#![enable(implicit_some, unwrap_variant_newtypes)]
+(
+    name: "s12_mls_groups",
+    description: "MLS groups: list, members, history, send states, join, invites, leave and delete on the mock",
+    timeline: [
+        (0, SourceStatusChanged(Connected)),
+        (0, ListingsLoaded([Nodes, Accounts, Contexts, Contacts, Objects, Approvals])),
+        (0, AccountUpdated(id: "local", label: "Local", lock_state: Unlocked, self_participant_id: "p-me")),
+        (0, ParticipantUpserted(id: "p-me", kind: Human, display: "Alex Moreau")),
+    ],
+    responses: [],
+)

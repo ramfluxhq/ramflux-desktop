@@ -56,6 +56,7 @@ pub use error::IntentError;
 pub use groups::{
     GroupProblem, MAX_GROUP_MEMBERS, MAX_GROUP_TITLE_LEN, check_create_group, check_group_title,
 };
+pub use mls_group::{INVITE_TTLS, INVITE_USES};
 pub use start::check_start_conversation;
 
 /// What an area decided about one intent.

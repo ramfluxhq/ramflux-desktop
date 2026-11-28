@@ -206,6 +206,27 @@ impl DevPanel {
         )
     }
 
+    /// The calls of the MLS groups the mock answered, per method (empty
+    /// outside the scenario `s12_mls_groups`): a runner reads them to check
+    /// that nothing was called for a local check, nothing twice for a double
+    /// tap and nothing sent without a Retry tap.
+    fn render_mls_calls(&self, cx: &App) -> impl IntoElement {
+        let calls = self.store.read(cx).session().map(|s| s.mls_calls()).unwrap_or_default();
+        Self::section(tr("dev.mls_calls"), cx).child(
+            v_flex()
+                .id("dev-mls-calls")
+                .gap(space(0.5))
+                .text_size(text_caption())
+                .font_family(cx.theme().mono_font_family.clone())
+                .children(calls.into_iter().map(|(method, count)| {
+                    div().child(tr_args(
+                        "dev.mls_call",
+                        &[("method", &method), ("count", &count.to_string())],
+                    ))
+                })),
+        )
+    }
+
     fn render_inspector(&self, cx: &App) -> impl IntoElement {
         let handle = self.store.read(cx);
         let muted = cx.theme().muted_foreground;
@@ -281,6 +302,7 @@ impl Render for DevPanel {
             .child(self.render_timeline(cx))
             .child(self.render_agent(cx))
             .child(self.render_counts(cx))
+            .child(self.render_mls_calls(cx))
             .child(self.render_inspector(cx))
     }
 }

@@ -529,6 +529,19 @@ impl AccountSession {
         self.mock().map_or(0, |source| source.effects().len())
     }
 
+    /// The calls the MLS groups handler of a mock source answered, per
+    /// contract method (empty for a live source or another scenario).
+    pub fn mls_calls(&self) -> Vec<(String, u64)> {
+        #[cfg(feature = "demo")]
+        {
+            self.mock().map(|source| source.mls_calls()).unwrap_or_default()
+        }
+        #[cfg(not(feature = "demo"))]
+        {
+            Vec::new()
+        }
+    }
+
     /// Labels of every effect a mock source received, oldest first.
     #[cfg(feature = "demo")]
     pub fn effect_labels(&self) -> impl Iterator<Item = &str> {

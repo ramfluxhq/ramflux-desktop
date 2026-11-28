@@ -127,7 +127,9 @@ impl AgentsPanel {
             cx.subscribe(&root, |this, _, event: &RootEvent, cx| match event {
                 RootEvent::ConfirmDeclined => this.confirmation_closed(true, cx),
                 RootEvent::ConfirmClosed => this.confirmation_closed(false, cx),
-                RootEvent::SurfaceChanged(_) | RootEvent::ReviewIdentity(_) => {}
+                RootEvent::SurfaceChanged(_)
+                | RootEvent::ReviewIdentity(_)
+                | RootEvent::MlsPanel(_) => {}
             }),
             cx.subscribe(&wizard_inputs.name, |_, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {

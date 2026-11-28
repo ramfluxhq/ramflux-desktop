@@ -93,6 +93,22 @@ impl Modal {
         self
     }
 
+    /// Adds the body content that is there (nothing for `None`).
+    pub fn children_of(mut self, element: Option<impl IntoElement>) -> Self {
+        if let Some(element) = element {
+            self.body.push(element.into_any_element());
+        }
+        self
+    }
+
+    /// Adds the button that is there to the foot row.
+    pub fn children_of_button(mut self, button: Option<impl IntoElement>) -> Self {
+        if let Some(button) = button {
+            self.footer.push(button.into_any_element());
+        }
+        self
+    }
+
     /// Adds a button to the foot row (laid out at the inline end, in order).
     pub fn button(mut self, button: impl IntoElement) -> Self {
         self.footer.push(button.into_any_element());

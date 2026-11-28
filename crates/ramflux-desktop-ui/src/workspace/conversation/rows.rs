@@ -170,6 +170,7 @@ impl Rows {
         for (ix, moment) in changed {
             let mut row = MomentRow::build_with(store, moment, me.as_ref(), &audit);
             countdown(&mut row, now);
+            mls_lock(store, &mut row, now);
             row.day_header = rows[ix].day_header.clone();
             if row != rows[ix] {
                 rows[ix] = row;
@@ -248,12 +249,21 @@ fn day_row(
 ) -> MomentRow {
     let mut row = MomentRow::build_with(store, moment, me, audit);
     countdown(&mut row, now);
+    mls_lock(store, &mut row, now);
     let day = i18n::format::local_day(moment.at);
     if day != *last_day {
         row.day_header = Some(i18n::day_label(moment.at, now));
         *last_day = day;
     }
     row
+}
+
+/// Marks the rows of an MLS group whose daily limit is used up, so Retry is
+/// off until the reset (the policy refuses it as well).
+fn mls_lock(store: &Store, row: &mut MomentRow, now: Timestamp) {
+    if let Some(group) = ramflux_desktop_core::mls_group::group_of(&row.moment.context_id) {
+        row.refs.mls_locked = store.mls_rate_locked_until(group, now).is_some();
+    }
 }
 
 fn countdown(row: &mut MomentRow, now: Timestamp) {

@@ -768,13 +768,14 @@ impl DomainEvent {
                 retry_of: text("retry_of"),
             },
             m::MLS_GROUP_HISTORY => {
-                let direction = if let Some(ls) = body.get("before_log_seq").and_then(JsonValue::as_u64) {
-                    HistoryDirection::Before(ls)
-                } else if let Some(ls) = body.get("after_log_seq").and_then(JsonValue::as_u64) {
-                    HistoryDirection::After(ls)
-                } else {
-                    HistoryDirection::Newest
-                };
+                let direction =
+                    if let Some(ls) = body.get("before_log_seq").and_then(JsonValue::as_u64) {
+                        HistoryDirection::Before(ls)
+                    } else if let Some(ls) = body.get("after_log_seq").and_then(JsonValue::as_u64) {
+                        HistoryDirection::After(ls)
+                    } else {
+                        HistoryDirection::Newest
+                    };
                 MlsStart::History { group_id: group()?, direction }
             }
             m::MLS_GROUP_REFRESH => MlsStart::Refresh { group_id: group()? },

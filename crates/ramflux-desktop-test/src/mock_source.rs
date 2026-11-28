@@ -13,6 +13,7 @@ use ramflux_desktop_core::{
 
 use crate::local_echo::{ECHO_DELAY_MS, audit_echo, local_echo};
 use crate::mock_ceremony::MockCeremony;
+use crate::mock_mls::MockMls;
 use crate::scenario::{ResponseRule, Scenario};
 
 /// Ordering key of a scheduled event: (offset ms, insertion order).
@@ -57,6 +58,8 @@ pub struct MockSource {
     now_ms: u64,
     effects: Vec<EffectRecord>,
     ceremony: MockCeremony,
+    /// The MLS group answers, while the scenario `s12_mls_groups` plays.
+    mls: Option<MockMls>,
 }
 
 impl MockSource {
@@ -78,6 +81,7 @@ impl MockSource {
             now_ms: 0,
             effects: Vec::new(),
             ceremony: MockCeremony::default(),
+            mls: (scenario.name == crate::mock_mls::SCENARIO).then(MockMls::new),
         };
         for (offset, event) in &scenario.timeline {
             source.schedule_at(*offset, event.clone());
@@ -89,6 +93,15 @@ impl MockSource {
     /// positions it asks.
     pub fn ceremony_mut(&mut self) -> &mut MockCeremony {
         &mut self.ceremony
+    }
+
+    /// The calls the MLS groups handler answered, per contract method (empty
+    /// while another scenario plays).
+    pub fn mls_calls(&self) -> Vec<(String, u64)> {
+        self.mls
+            .as_ref()
+            .map(|mls| mls.calls().map(|(method, count)| (method.to_owned(), count)).collect())
+            .unwrap_or_default()
     }
 
     /// Scenario epoch.
@@ -182,6 +195,33 @@ impl Source for MockSource {
             });
             for event in crate::mock_cards::respond(&label, &body) {
                 self.inject(ECHO_DELAY_MS, event);
+            }
+            return;
+        }
+        if label.starts_with("mls_group.") && self.mls.is_some() {
+            // The MLS groups answer from code, before the rules. The link of
+            // a join never enters the record (it is a secret).
+            let body = effect.body().cloned().unwrap_or_default();
+            let mut recorded = body.clone();
+            if let Some(link) = recorded.get_mut("link") {
+                *link = JsonValue::from("<redacted>");
+            }
+            self.effects.push(EffectRecord {
+                at_ms: self.now_ms,
+                label: label.clone(),
+                rule: None,
+                echoed: true,
+                body: recorded,
+            });
+            let now = self.epoch.saturating_add_ms(self.now_ms);
+            // The call is on its way as soon as the source takes it.
+            if let Some(started) = DomainEvent::mls_started(&label, &body) {
+                self.inject(0, started);
+            }
+            let Some(mls) = self.mls.as_mut() else { return };
+            let answers = mls.respond(&label, &body, now);
+            for (delay, event) in answers {
+                self.inject(delay, event);
             }
             return;
         }

@@ -326,6 +326,10 @@ fn entry(store: &Store, row: ConversationRow<'_>, filter: ListFilter) -> Option<
     if filter == ListFilter::Groups && row.context.kind != ContextKind::Group {
         return None;
     }
+    // MLS groups are listed by their own section, never here.
+    if row.context.kind == ContextKind::MlsGroup {
+        return None;
+    }
     let has_task = || {
         store
             .context_moments(&row.context.id)

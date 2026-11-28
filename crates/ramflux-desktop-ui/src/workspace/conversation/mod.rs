@@ -68,6 +68,9 @@ pub struct Conversation {
     /// The oldest row shown when older history was last asked for: asked
     /// again only once older rows arrived (and were scrolled to).
     older_asked: Option<MomentId>,
+    /// The wait until a used-up daily limit of an MLS group resets: it only
+    /// redraws, never sends. Dropping it cancels it.
+    rate_timer: Option<(ramflux_desktop_core::Timestamp, gpui_kit::Task<()>)>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -155,6 +158,7 @@ impl Conversation {
             rows: Rows::default(),
             scroller,
             older_asked: None,
+            rate_timer: None,
             view: ViewState::default(),
             highlighted: None,
             composer,
@@ -273,11 +277,66 @@ impl Conversation {
         (self.view.selection.len(), self.view.selection.created, self.view.selection.last_touched)
     }
 
+    /// The wait for a used-up daily limit ended: the composer and Retry come
+    /// back (nothing is sent).
+    fn rate_lock_elapsed(&mut self, cx: &mut Context<Self>) {
+        self.rate_timer = None;
+        if let Some(id) = self.context_id.clone() {
+            let _ = self.rows.sync(self.store.read(cx), &id, None);
+        }
+        cx.notify();
+    }
+
+    /// Keeps one timer for the lock of the shown group: armed for its reset
+    /// time, dropped when there is no lock (an account lock clears it).
+    fn follow_rate_lock(
+        &mut self,
+        until: Option<ramflux_desktop_core::Timestamp>,
+        now: ramflux_desktop_core::Timestamp,
+        cx: &mut Context<Self>,
+    ) {
+        match until {
+            None => self.rate_timer = None,
+            Some(until) if self.rate_timer.as_ref().map(|(at, _)| *at) != Some(until) => {
+                let wait = std::time::Duration::from_millis(until.saturating_since(now) + 50);
+                let task = cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(wait).await;
+                    this.update(cx, |field, cx| field.rate_lock_elapsed(cx)).ok();
+                });
+                self.rate_timer = Some((until, task));
+            }
+            Some(_) => {}
+        }
+    }
+
     /// The oldest row shown came into view: the source is asked for the
     /// history before it, once per oldest row.
-    fn reached_top(&mut self, top: &MomentId, cx: &mut Context<Self>) {
+    fn reached_top(&mut self, top: &MomentId, window: &mut Window, cx: &mut Context<Self>) {
         let Some(context) = self.context_id.clone() else { return };
         if self.older_asked.as_ref() == Some(top) {
+            return;
+        }
+        // An MLS group asks for the history before its oldest post through
+        // the intent (once per oldest row, and only while older rows exist).
+        if let Some(group) = ramflux_desktop_core::mls_group::group_of(&context) {
+            let oldest = self.store.read(cx).store().mls_timeline(group).and_then(|tl| {
+                (tl.more_older && !tl.older_in_flight)
+                    .then(|| tl.posted.keys().next().copied())
+                    .flatten()
+            });
+            if let Some(oldest) = oldest {
+                self.older_asked = Some(top.clone());
+                self.root_sink.scoped(Scope::Context(context.clone())).emit(
+                    UiEventKind::MlsHistoryRequested {
+                        group_id: group.to_owned(),
+                        direction: ramflux_desktop_core::mls_group::HistoryDirection::Before(
+                            oldest,
+                        ),
+                    },
+                    window,
+                    cx,
+                );
+            }
             return;
         }
         self.older_asked = Some(top.clone());
@@ -491,6 +550,32 @@ impl Conversation {
                     }).ok();
                     None
                 }
+                // Deleting an own post of an MLS group asks first: the
+                // confirmation dialog sends the delete.
+                UiEventKind::DeleteForEveryonePressed
+                    if moment_id.as_str().starts_with(ramflux_desktop_core::mls_group::CONTEXT_PREFIX) =>
+                {
+                    let (group, post) = this
+                        .update(cx, |field, cx| {
+                            let store = field.store.read(cx).store();
+                            let moment = store.moment(&moment_id)?;
+                            let group = ramflux_desktop_core::mls_group::group_of(&moment.context_id)?
+                                .to_owned();
+                            let post = crate::root::intent_map::mls_post_of(store, &moment_id)?;
+                            Some((group, post))
+                        })
+                        .ok()
+                        .flatten()?;
+                    Some(UiEvent {
+                        scope_path: event.scope_path.clone(),
+                        kind: UiEventKind::MlsPanelRequested {
+                            panel: ramflux_desktop_core::mls_group::MlsPanel::ConfirmDelete {
+                                group_id: group,
+                                post_id: post,
+                            },
+                        },
+                    })
+                }
                 // Reply and Edit open in the composer; what it submits is
                 // the action (SubmitReply, SubmitEdit), scoped to the
                 // conversation.
@@ -604,14 +689,33 @@ impl Render for Conversation {
                 .pt(space(3.))
                 .child(switcher())
         });
-        let header = header::render(
-            store,
-            context,
-            context_sink.clone(),
-            renaming,
-            header::Controls { tools },
-            cx,
-        );
+        let mls_group = context
+            .filter(|c| c.kind == ramflux_desktop_core::ContextKind::MlsGroup)
+            .and_then(|c| ramflux_desktop_core::mls_group::group_of(&c.id))
+            .map(str::to_owned);
+        let header = match (context.filter(|_| mls_group.is_some()), context_sink.clone()) {
+            // An MLS group has its own header: no rename, no old group menu.
+            (Some(context), Some(sink)) => {
+                super::mls_group::chrome::header(store, context, sink, tools, cx)
+            }
+            _ => header::render(
+                store,
+                context,
+                context_sink.clone(),
+                renaming,
+                header::Controls { tools },
+                cx,
+            ),
+        };
+        // A read-only MLS group has a banner and no composer (S13); an open
+        // one has the strip of the members the next post mentions.
+        let mls_banner = mls_group
+            .as_deref()
+            .and_then(|g| super::mls_group::chrome::read_only_banner(store, g, cx));
+        let mls_strip = mls_group
+            .as_deref()
+            .zip(context_sink.clone())
+            .and_then(|(g, sink)| super::mls_group::chrome::mention_strip(store, g, sink, cx));
         let body = match context_sink.filter(|_| !rows.is_empty()) {
             None => {
                 let no_contexts = store.contexts().next().is_none();
@@ -662,8 +766,9 @@ impl Render for Conversation {
                         let id = &row.moment.id;
                         if ix == 0 {
                             let (this, id) = (this.clone(), id.clone());
-                            cx.defer(move |cx| {
-                                this.update(cx, |field, cx| field.reached_top(&id, cx)).ok();
+                            window.defer(cx, move |window, cx| {
+                                this.update(cx, |field, cx| field.reached_top(&id, window, cx))
+                                    .ok();
                             });
                         }
                         if row.is_missing_body() {
@@ -736,7 +841,28 @@ impl Render for Conversation {
         let root = self.root.read(cx);
         let strip = (root.host() == ConfirmHost::Workspace).then(|| root.confirm_strip().clone());
         let draft = self.draft.clone().filter(|_| self.context_id.is_none());
-        let composer = Some(self.composer.clone());
+        // A used-up daily limit takes the composer away until it resets.
+        let now = self.store.read(cx).session().map(|s| s.now()).unwrap_or_default();
+        let rate_until = mls_group
+            .as_deref()
+            .and_then(|g| self.store.read(cx).store().mls_rate_locked_until(g, now));
+        self.follow_rate_lock(rate_until, now, cx);
+        let rate_tip = rate_until.filter(|_| mls_banner.is_none()).map(|until| {
+            div()
+                .id("mls-rate-limit")
+                .role(gpui_kit::Role::Status)
+                .w_full()
+                .px(gpui_kit::rems(24.0 / 15.0))
+                .py(space(3.))
+                .text_size(text_secondary())
+                .text_color(cx.theme().muted_foreground)
+                .child(crate::i18n::tr_args(
+                    "group.send.rate_limited",
+                    &[("time", &crate::i18n::time_of_day(until))],
+                ))
+        });
+        let mls_strip = mls_strip.filter(|_| rate_tip.is_none());
+        let composer = (mls_banner.is_none() && rate_tip.is_none()).then(|| self.composer.clone());
         let status = self.status.clone();
         v_flex()
             .id("conversation")
@@ -749,6 +875,9 @@ impl Render for Conversation {
                 None => field.child(header).children(status).child(body),
             })
             .children(strip)
+            .children(mls_banner)
+            .children(mls_strip)
+            .children(rate_tip)
             // Board H01: the composer keeps 24 px gutters when the pane is
             // narrower than its reading column (a tool panel open).
             .children(

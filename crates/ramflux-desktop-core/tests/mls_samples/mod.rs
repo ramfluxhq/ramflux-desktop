@@ -220,6 +220,9 @@ pub fn ui_events() -> Vec<UiEventKind> {
         },
         UiEventKind::MlsJoinPressed { link: InviteLink::new("rfinv-x"), attempt: 1 },
         UiEventKind::MlsJoinPendingRequested,
+        UiEventKind::MlsPanelRequested {
+            panel: MlsPanel::ConfirmLeave { group_id: "g-1".to_owned() },
+        },
         UiEventKind::MlsRetryPressed {
             context: ContextId::new("mls:g-1"),
             local_id: "l-1".to_owned(),

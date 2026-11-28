@@ -17,7 +17,8 @@ use ramflux_desktop_core::{
 /// Returns `None` for view-local events and for events whose scope does not
 /// identify a valid target. Validation beyond targeting is the policy's job.
 pub fn intent_for(event: &UiEvent, store: &Store) -> Option<IntentKind> {
-    context_intent(event)
+    mls_group_intent(event, store)
+        .or_else(|| context_intent(event))
         .or_else(|| moment_intent(event, store))
         .or_else(|| page_intent(event, store))
 }
@@ -305,6 +306,142 @@ fn page_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
         }
         UiEventKind::DiagnosticsExportRequested { path } => {
             IntentKind::ExportDiagnostics { path: path.clone() }
+        }
+        _ => return None,
+    })
+}
+
+/// The ids of own sends made by this process: a time and a counter, so two
+/// quick sends never share a `local_id`.
+fn new_local_id() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis());
+    format!("l-{now}-{}", COUNTER.fetch_add(1, Ordering::Relaxed))
+}
+
+/// The group an MLS context names.
+fn mls_group_of(event: &UiEvent) -> Option<String> {
+    ramflux_desktop_core::mls_group::group_of(event.context_id()?).map(str::to_owned)
+}
+
+/// The post a moment of an MLS group shows: posted (`mls:<group>:<log_seq>`)
+/// or own and not in the log (`mls:<group>:p:<post_id>`).
+pub fn mls_post_of(store: &Store, moment: &ramflux_desktop_core::MomentId) -> Option<String> {
+    let rest = moment.as_str().strip_prefix(ramflux_desktop_core::mls_group::CONTEXT_PREFIX)?;
+    let (group, tail) = rest.split_once(':')?;
+    let timeline = store.mls_timeline(group)?;
+    if let Some(post) = tail.strip_prefix("p:") {
+        return Some(post.to_owned());
+    }
+    let log_seq: u64 = tail.split(':').next()?.parse().ok()?;
+    timeline.posted.get(&log_seq).map(|p| p.post_id.clone())
+}
+
+/// Whether a moment of an MLS group is a post that is in the log
+/// (`mls:<group>:<log_seq>`), not an own one that is still on its way.
+pub fn mls_posted(moment: &ramflux_desktop_core::MomentId) -> bool {
+    moment
+        .as_str()
+        .strip_prefix(ramflux_desktop_core::mls_group::CONTEXT_PREFIX)
+        .and_then(|rest| rest.split_once(':'))
+        .is_some_and(|(_, tail)| !tail.is_empty() && tail.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// The intents of the MLS groups: their own events, and what the composer
+/// submits in an MLS group context (a post, a reply, a Retry).
+fn mls_group_intent(event: &UiEvent, store: &Store) -> Option<IntentKind> {
+    use ramflux_desktop_core::mls_group::{self, HistoryDirection};
+    Some(match &event.kind {
+        UiEventKind::MlsListRequested { cursor } => {
+            IntentKind::MlsGroupList { cursor: cursor.clone() }
+        }
+        UiEventKind::MlsInfoRequested { group_id } => {
+            IntentKind::MlsGroupInfo { group_id: group_id.clone() }
+        }
+        UiEventKind::MlsMembersRequested { group_id, cursor } => {
+            IntentKind::MlsGroupMembers { group_id: group_id.clone(), cursor: cursor.clone() }
+        }
+        UiEventKind::MlsHistoryRequested { group_id, direction } => IntentKind::MlsGroupHistory {
+            group_id: group_id.clone(),
+            direction: match direction {
+                HistoryDirection::Newest => HistoryDirection::Newest,
+                HistoryDirection::Before(ls) => HistoryDirection::Before(*ls),
+                HistoryDirection::After(ls) => HistoryDirection::After(*ls),
+            },
+        },
+        UiEventKind::MlsRefreshPressed { group_id } => {
+            IntentKind::MlsGroupRefresh { group_id: group_id.clone() }
+        }
+        UiEventKind::MlsMarkReadRequested { group_id, log_seq } => {
+            IntentKind::MlsGroupMarkRead { group_id: group_id.clone(), log_seq: *log_seq }
+        }
+        UiEventKind::MlsCreatePressed { name, approval } => {
+            IntentKind::MlsGroupCreate { name: name.clone(), approval: *approval }
+        }
+        UiEventKind::MlsInviteCreatePressed { group_id, max_uses, ttl_s } => {
+            IntentKind::MlsInviteCreate {
+                group_id: group_id.clone(),
+                max_uses: *max_uses,
+                ttl_s: *ttl_s,
+            }
+        }
+        UiEventKind::MlsInviteListRequested { group_id } => {
+            IntentKind::MlsInviteList { group_id: group_id.clone() }
+        }
+        UiEventKind::MlsInviteRevokePressed { group_id, invite_id } => {
+            IntentKind::MlsInviteRevoke { group_id: group_id.clone(), invite_id: invite_id.clone() }
+        }
+        UiEventKind::MlsJoinPressed { link, attempt } => {
+            IntentKind::MlsGroupJoin { link: link.clone(), attempt: *attempt }
+        }
+        UiEventKind::MlsJoinPendingRequested => IntentKind::MlsJoinPending,
+        UiEventKind::MlsDeletePressed { group_id, post_id } => {
+            IntentKind::MlsGroupDelete { group_id: group_id.clone(), post_id: post_id.clone() }
+        }
+        UiEventKind::MlsLeavePressed { group_id } => {
+            IntentKind::MlsGroupLeave { group_id: group_id.clone() }
+        }
+        UiEventKind::MlsRetryPressed { context, local_id } => {
+            let group_id = mls_group::group_of(context)?.to_owned();
+            let item = store
+                .mls_not_sent(&group_id)
+                .into_iter()
+                .find(|i| &i.local_id == local_id || i.post_id.as_deref() == Some(local_id))?;
+            IntentKind::MlsGroupSend {
+                group_id,
+                text: item.text.clone(),
+                reply_to: item.reply_to.clone(),
+                mentions: item.mentions.clone(),
+                local_id: new_local_id(),
+                retry_of: Some(item.local_id.clone()),
+            }
+        }
+        // The composer of an MLS group posts text, with the mentions the
+        // user picked; a reply names the post it answers.
+        UiEventKind::SubmitMessage { text } => {
+            let group_id = mls_group_of(event)?;
+            IntentKind::MlsGroupSend {
+                group_id: group_id.clone(),
+                text: text.clone(),
+                reply_to: None,
+                mentions: crate::workspace::mls_group::take_mentions(&group_id),
+                local_id: new_local_id(),
+                retry_of: None,
+            }
+        }
+        UiEventKind::SubmitReply { target, text } => {
+            let group_id = mls_group_of(event)?;
+            IntentKind::MlsGroupSend {
+                group_id: group_id.clone(),
+                text: text.clone(),
+                reply_to: mls_post_of(store, target),
+                mentions: crate::workspace::mls_group::take_mentions(&group_id),
+                local_id: new_local_id(),
+                retry_of: None,
+            }
         }
         _ => return None,
     })

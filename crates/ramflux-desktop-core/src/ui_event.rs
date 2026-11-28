@@ -352,6 +352,12 @@ pub enum UiEventKind {
     },
     /// The pending join requests were asked for.
     MlsJoinPendingRequested,
+    /// A panel or dialog of the MLS groups was asked for (the workspace
+    /// opens it; nothing is sent).
+    MlsPanelRequested {
+        /// Which.
+        panel: crate::model::mls_group::MlsPanel,
+    },
     /// "Retry" pressed on a bubble that was not sent.
     MlsRetryPressed {
         /// The group conversation.
