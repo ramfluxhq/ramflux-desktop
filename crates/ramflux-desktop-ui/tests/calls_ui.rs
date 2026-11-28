@@ -108,10 +108,10 @@ fn open_calls(cx: &mut TestAppContext, name: &str, call_api: bool) -> World {
     open_calls_with(cx, name, call_api, &[])
 }
 
-/// As [`open_calls`], with the manual verification of `stale` gone stale.
-fn open_calls_with(cx: &mut TestAppContext, name: &str, call_api: bool, stale: &[&str]) -> World {
+/// As [`open_calls`], with an identity change of `changed` waiting.
+fn open_calls_with(cx: &mut TestAppContext, name: &str, call_api: bool, changed: &[&str]) -> World {
     let (fake, state, path) = sdk_fake::start(name);
-    state.lock().expect("state").stale.extend(stale.iter().map(|s| (*s).to_owned()));
+    state.lock().expect("state").changed.extend(changed.iter().map(|s| (*s).to_owned()));
     fake.enable_stream();
     let fake = std::sync::Arc::new(fake);
     let calls = state.lock().expect("state").calls.clone();
@@ -289,62 +289,37 @@ fn without_the_call_api_the_call_button_is_disabled(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_call_to_a_stale_contact_asks_to_acknowledge_and_never_refuses(cx: &mut TestAppContext) {
-    let world = open_calls_with(cx, "ui-call-stale", true, &["principal-ana"]);
+fn a_call_to_a_changed_contact_opens_the_identity_sheet_and_places_nothing(
+    cx: &mut TestAppContext,
+) {
+    let world = open_calls_with(cx, "ui-call-changed", true, &["principal-ana"]);
     let invites =
         |world: &World| world.fake.seen().into_iter().filter(|s| s.method == "call.invite").count();
-    // The sticky banner stays, in the header.
-    assert!(exists(cx, world.handle, "safety-banner-principal-ana"));
+    // The banner stays, in the header, with Review and no dismiss.
+    wait(cx, "the banner", |cx| exists(cx, world.handle, "identity-banner-principal-ana"));
     let banner = in_window(cx, world.handle, |window, _| {
-        window.find("safety-banner-principal-ana").label().map(str::to_owned)
+        window.find("identity-banner-principal-ana").label().map(str::to_owned)
     });
-    let text = tr_args("identity.safety.stale_banner", &[("name", "principal-ana")]);
+    let text = tr_args("identity.changed.banner", &[("name", "principal-ana")]);
     assert_eq!(banner.as_deref(), Some(text.as_ref()));
     let disabled =
         in_window(cx, world.handle, |window, _| window.find("conversation-call").disabled());
-    assert_ne!(disabled, Some(true), "a stale verification does not disable Call");
+    assert_ne!(disabled, Some(true), "a changed identity does not disable Call");
     click(cx, world.handle, "conversation-call");
-    assert!(exists(cx, world.handle, "call-stale-ack"));
-    assert_eq!(invites(&world), 0, "nothing is placed before Continue");
-    // Verify again closes the acknowledgement without calling.
-    click_in(cx, world.handle, "call-stale-ack", "stale-verify");
     advance(cx, 100);
-    assert!(!exists(cx, world.handle, "call-stale-ack"));
-    assert_eq!(invites(&world), 0);
-    // Continue places the call.
-    click(cx, world.handle, "conversation-call");
-    click_in(cx, world.handle, "call-stale-ack", "stale-continue");
-    wait(cx, "calling", |cx| with_store(cx, &world.shell, current).is_some());
-    assert_eq!(invites(&world), 1);
-    assert!(!exists(cx, world.handle, "call-stale-ack"));
-}
-
-#[gpui_kit::test]
-fn call_back_on_a_stale_contact_goes_through_the_same_acknowledgement(cx: &mut TestAppContext) {
-    let world = open_calls_with(cx, "ui-call-back-stale", true, &["principal-ana"]);
-    let invites =
-        |world: &World| world.fake.seen().into_iter().filter(|s| s.method == "call.invite").count();
-    // A first call, after the acknowledgement, then hung up: a record.
-    click(cx, world.handle, "conversation-call");
-    click_in(cx, world.handle, "call-stale-ack", "stale-continue");
-    wait(cx, "calling", |cx| with_store(cx, &world.shell, current).is_some());
-    let id = with_store(cx, &world.shell, current).unwrap();
-    assert_eq!(invites(&world), 1);
-    world.calls.peer_answers(id.as_str());
-    wait(cx, "active", |cx| call_state(cx, &world, &id) == Some(CallState::Active));
-    click(cx, world.handle, "call-hang-up");
-    wait(cx, "ended", |cx| {
-        call_state(cx, &world, &id) == Some(CallState::Ended(CallEndReason::Completed))
-    });
-    advance(cx, 100);
-    // Call back asks first; nothing is placed before Continue.
-    click(cx, world.handle, "call-back");
-    assert!(exists(cx, world.handle, "call-stale-ack"), "the same acknowledgement");
-    advance(cx, 300);
-    assert_eq!(invites(&world), 1, "no call.invite before Continue");
-    click_in(cx, world.handle, "call-stale-ack", "stale-continue");
-    wait(cx, "calling back", |cx| {
-        with_store(cx, &world.shell, current).is_some_and(|again| again != id)
-    });
-    assert_eq!(invites(&world), 2);
+    assert!(
+        exists(cx, world.handle, "identity-sheet-text"),
+        "Call opens the identity change sheet"
+    );
+    assert_eq!(invites(&world), 0, "no call is placed");
+    // The change is not known yet (status only): nothing can be accepted.
+    let accept =
+        in_window(cx, world.handle, |window, _| window.find("identity-sheet-accept").disabled());
+    assert_eq!(accept, Some(true));
+    click(cx, world.handle, "identity-sheet-later");
+    assert!(!exists(cx, world.handle, "identity-sheet-text"));
+    assert!(
+        !world.fake.seen().iter().any(|s| s.method == "contact.trust.accept_change"),
+        "closing accepts nothing"
+    );
 }

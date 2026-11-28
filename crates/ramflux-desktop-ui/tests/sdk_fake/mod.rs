@@ -6,7 +6,7 @@
 //! recording what the desktop submits:
 //!
 //! - `principal-bo`: accepted, verified, routable, no direct conversation;
-//! - `principal-cy`: accepted, verification stale (`verification_stale`);
+//! - `principal-cy`: accepted;
 //! - `principal-dee`: accepted, a device with a target but no verified key;
 //! - `principal-zed`: accepted, not listed by the identity directory.
 //!
@@ -144,9 +144,9 @@ pub struct State {
     /// `reason_code`, as the daemon does while an ownership transfer holds
     /// the group's head (product `check_group_transfer_lease`).
     pub group_refusal: Option<&'static str>,
-    /// Principals whose manual verification went stale
-    /// (`safety_state: verification_stale`).
-    pub stale: Vec<String>,
+    /// Principals whose identity change waits for the user
+    /// (`contact.verification.status` answers `changed` for them).
+    pub changed: Vec<String>,
     /// More accepted contacts, each with one routable device (listed by
     /// `contact.list` and the identity directory).
     pub extra_peers: Vec<String>,
@@ -223,7 +223,6 @@ fn identities(all: &BTreeMap<String, Value>) -> Value {
         "devices": [{ "id": "device-dee", "device_id": "device-dee", "label": null,
                       "last_seen": null, "verified_at": null,
                       "target_delivery_id": "target-dee", "signing_public_key": null }],
-        "safety_state": "unverified", "safety_number": null, "safety_number_available": false,
     }));
     frame
 }
@@ -481,6 +480,14 @@ pub fn start_with_custody(
             let state = state.lock().expect("state");
             let fixture = || all.get(method).cloned().unwrap_or(json!({}));
             Reply::Ok(match method {
+                "contact.verification.status" => {
+                    let contact = body["contact"].as_str().unwrap_or_default();
+                    let changed = state
+                        .changed
+                        .iter()
+                        .any(|p| p == contact || p.replacen("principal-", "cm-", 1) == contact);
+                    json!({ "identity_state": if changed { "changed" } else { "tofu" } })
+                }
                 "contact.list" => {
                     let mut listed = contacts();
                     for (ix, peer) in state.extra_peers.iter().enumerate() {
@@ -514,17 +521,12 @@ pub fn start_with_custody(
                                       "label": null, "last_seen": null, "verified_at": 1_790_000_000,
                                       "target_delivery_id": format!("target-{peer}"),
                                       "signing_public_key": format!("key-{peer}") }],
-                        "safety_state": "unverified", "safety_number": null,
-                        "safety_number_available": false,
                     }));
                     }
                     for row in frame["identities"].as_array_mut().expect("rows") {
                         let principal = row["principal_id"].as_str().unwrap_or_default().to_owned();
                         if let Some(name) = state.names.get(&principal) {
                             row["display_name"] = json!(name);
-                        }
-                        if state.stale.contains(&principal) {
-                            row["safety_state"] = json!("verification_stale");
                         }
                         if state.profiles.get(&principal).is_some()
                             && let (Value::Object(row), Value::Object(fields)) =

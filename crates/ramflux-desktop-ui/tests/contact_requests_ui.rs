@@ -3,8 +3,8 @@
 
 //! UI integration tests of contact requests in the contacts dock, driving
 //! the production window on the fake daemon with the CONTACT-02 request
-//! API (contract-first): a pending request with its note, held messages and
-//! safety number; Accept, Decline and Block (through the confirmation) reaching the
+//! API (contract-first): a pending request with its note and held messages;
+//! Accept, Decline and Block (through the confirmation) reaching the
 //! daemon by request id; the auto-accept setting; this account's own
 //! request on a contact (Send again while it waits, a decline shown as
 //! such, a re-request during the decline's cooldown explained in the add
@@ -77,9 +77,7 @@ fn sent(world: &World, method: &str) -> Vec<serde_json::Value> {
 }
 
 #[gpui_kit::test]
-fn a_request_shows_its_note_held_messages_and_safety_number_and_is_accepted(
-    cx: &mut TestAppContext,
-) {
+fn a_request_shows_its_note_and_held_messages_and_is_accepted(cx: &mut TestAppContext) {
     let world = open_requests(cx, "ui-request-accept", true);
     let id = world.requests.incoming(ACCOUNT, "principal-new", Some("we met at the meetup"));
     world.requests.hold(&id, "hi, it's me from the meetup");
@@ -90,7 +88,6 @@ fn a_request_shows_its_note_held_messages_and_safety_number_and_is_accepted(
                 .is_some_and(|held| held.contains("hi, it's me from the meetup"))
     });
     assert!(exists_in(cx, world.handle, &row("principal-new"), "request-note"));
-    assert!(exists_in(cx, world.handle, &row("principal-new"), "request-safety"));
     let held = label_in(cx, &world, &row("principal-new"), "request-held").unwrap_or_default();
     assert!(held.contains("hi, it's me from the meetup"), "{held}");
     assert!(exists(cx, world.handle, "contacts-auto-accept"));

@@ -5,7 +5,7 @@
 //! contacts dock with messages both ways, and an attachment sent with the
 //! composer's attach button.
 
-use ramflux_desktop_core::{ContactLink, ContextId, ParticipantId, SafetyState};
+use ramflux_desktop_core::{ContactLink, ContextId, ParticipantId};
 
 use super::setup::short;
 use super::{Demo, files, probe};
@@ -78,7 +78,7 @@ pub fn contacts<H: Host, D: DemoDaemon>(
             })
         });
         let shown = demo.read(me, |s| {
-            s.participant(&participant).map(|p| (p.reachable, p.safety, p.kind, p.kind_claim))
+            s.participant(&participant).map(|p| (p.reachable, p.identity, p.kind, p.kind_claim))
         })?;
         if reach.is_err() {
             return Err(format!(
@@ -92,7 +92,6 @@ pub fn contacts<H: Host, D: DemoDaemon>(
             demo.sides[me].name, demo.sides[peer].name
         ));
         demo.shots(me, if by_card { "04_add_by_card" } else { "04_add_by_id" }, notes)?;
-        verify(demo, me, &participant, &row, notes)?;
         demo.shots(me, "04_contacts", notes)?;
         demo.sides[me].desk()?.click(demo.host, None, "rail-contacts")?;
     }
@@ -137,53 +136,6 @@ pub(super) fn shown_card<H: Host, D: DemoDaemon>(
     demo.shots(ix, "04_my_card", notes)?;
     demo.sides[ix].desk()?.click(demo.host, None, "contact-card-hide")?;
     Ok(card)
-}
-
-/// Presses Verify on the contact row when the daemon offers it, then "The
-/// numbers match" in the comparison it opens, and notes the safety state
-/// either way.
-fn verify<H: Host, D: DemoDaemon>(
-    demo: &mut Demo<'_, H, D>,
-    me: usize,
-    participant: &ParticipantId,
-    row: &str,
-    notes: &mut Notes,
-) -> Result<(), String> {
-    let name = demo.sides[me].name;
-    let limit = demo.config.limits.verify;
-    let start = std::time::Instant::now();
-    // Verify needs the contact's identity, which the daemon lists once it
-    // has the contact's devices; press again until it is verified or the
-    // limit passes.
-    while start.elapsed() < limit {
-        let desk = demo.sides[me].desk()?;
-        // Verify opens the comparison; the numbers match is the confirmation.
-        let _ = desk.click(demo.host, Some(row), "verify");
-        demo.host.tick();
-        let _ = desk.click(demo.host, None, "verify-confirm");
-        let pressed = std::time::Instant::now();
-        while pressed.elapsed() < std::time::Duration::from_secs(1) {
-            demo.host.tick();
-        }
-        let verified = demo.read(me, |s| {
-            s.participant(participant)
-                .filter(|p| p.safety == SafetyState::Verified)
-                .map(|p| p.safety_number.clone())
-        })?;
-        if let Some(number) = verified {
-            notes.add(format!(
-                "{name}: safety number verified ({})",
-                number.as_deref().map_or_else(|| "no number shown".to_owned(), short)
-            ));
-            return Ok(());
-        }
-    }
-    let state = demo.read(me, |s| s.participant(participant).map(|p| p.safety))?;
-    notes.add(format!(
-        "{name}: safety number not verifiable yet ({state:?}; the daemon lists it once it has \
-         the contact's devices)"
-    ));
-    Ok(())
 }
 
 /// Step 5: Alice starts the conversation from Bob's row in her contacts

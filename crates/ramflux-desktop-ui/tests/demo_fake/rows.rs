@@ -55,7 +55,6 @@ pub fn devices(account: &Account) -> Value {
 /// An identity row of `who` as `viewer` sees it.
 pub fn identity(who: &Account, viewer: &Account) -> Value {
     let is_self = who.principal == viewer.principal;
-    let verified = viewer.verified.contains(&who.commitment);
     json!({
         "id": who.principal, "principal_id": who.principal,
         "principal_commitment": who.commitment, "contact_identity_commitment": who.commitment,
@@ -66,11 +65,6 @@ pub fn identity(who: &Account, viewer: &Account) -> Value {
             "signing_public_key": format!("key-{}", who.device),
         }],
         "device_set_hash": format!("set-{}", who.device),
-        "safety_state": if verified { "verified" } else { "unverified" },
-        // Resolving a contact caches the safety number (CONTACT-01), so it
-        // is listed to compare before it is verified.
-        "safety_number": if is_self { Value::Null } else { json!(["31415", "92653", "58979", "32384"]) },
-        "safety_number_available": !is_self,
     })
 }
 

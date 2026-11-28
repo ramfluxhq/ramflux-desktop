@@ -8,8 +8,7 @@
 //!    the expected key and confirms it with one tap;
 //! 3. each creates its account (Alice, Bob) on the node;
 //! 4. Alice adds Bob from the contact card Bob's desktop shows, Bob adds
-//!    Alice by principal id; both are reachable at once, and each verifies
-//!    the other's safety number where the daemon offers it;
+//!    Alice by principal id; both are reachable at once;
 //! 5. direct messages both ways, with receipts;
 //! 6. Alice sends Bob an attachment;
 //! 7. Alice makes a group with Bob in the New group form; messages both
@@ -251,9 +250,7 @@ pub fn run<H: Host, D: DemoDaemon>(demo: &mut Demo<'_, H, D>) -> Steps {
         setup::node(demo, n)
     });
     steps.run(3, "Create Alice and Bob on the node", &[2], |n| setup::accounts(demo, n));
-    steps.run(4, "Add each other as contacts; verify safety numbers", &[3], |n| {
-        talk::contacts(demo, n)
-    });
+    steps.run(4, "Add each other as contacts", &[3], |n| talk::contacts(demo, n));
     steps.run(5, "Direct messages both ways, with receipts", &[4], |n| talk::messages(demo, n));
     steps.run(6, "Alice sends Bob an attachment", &[5], |n| talk::attachment(demo, n));
     steps.run(7, "A new group with both from the desktop; messages both ways", &[4], |n| {
@@ -316,9 +313,7 @@ fn peer_step_wanted(number: u8) -> bool {
 
 /// Steps 4 to 10 and the message actions between the two desktops.
 fn desktop_pair<H: Host, D: DemoDaemon>(steps: &mut Steps, demo: &mut Demo<'_, H, D>) {
-    steps.run(4, "Add each other as contacts; verify safety numbers", &[3], |n| {
-        talk::contacts(demo, n)
-    });
+    steps.run(4, "Add each other as contacts", &[3], |n| talk::contacts(demo, n));
     after_step(steps, demo, 4);
     steps.run(5, "Direct messages both ways, with receipts", &[4], |n| talk::messages(demo, n));
     after_step(steps, demo, 5);
@@ -445,9 +440,7 @@ pub fn run_calls<H: Host, D: DemoDaemon>(
         setup::node(demo, n)
     });
     steps.run(3, "Create Alice and Bob on the node", &[2], |n| setup::accounts(demo, n));
-    steps.run(4, "Add each other as contacts; verify safety numbers", &[3], |n| {
-        talk::contacts(demo, n)
-    });
+    steps.run(4, "Add each other as contacts", &[3], |n| talk::contacts(demo, n));
     steps.run(5, "Direct messages both ways, with receipts", &[4], |n| talk::messages(demo, n));
     steps.run(
         11,

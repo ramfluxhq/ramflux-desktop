@@ -18,9 +18,6 @@
 //!   starts with `other-root` names another root: for a contact looked up by
 //!   id it is refused with `root_replacement_confirmation_required` and both
 //!   roots, until `replace_provisional_root` names the looked-up root.
-//! - `contact.safety_number` answers the compared snapshot (`expected`);
-//!   `contact.verify {expected}` marks that contact verified
-//!   (`root_source: verified`).
 //! - `contact.card.export` answers this account's card and link.
 //! - `group.create` records the group with its creator, conversation and
 //!   name; `group.member.add` adds a member device; `group.list` and
@@ -187,8 +184,6 @@ fn identity(principal: &str, root: &str, source: &str) -> Option<Value> {
         "contact_identity_commitment": root,
         "display_name": who.name, "kind": if who.kind == "human" { Value::from("human") } else { Value::Null },
         "is_self": false, "devices": devices,
-        "safety_state": if source == "verified" { "verified" } else { "unverified" },
-        "safety_number": ["31415", "92653", format!("{:0>5}", principal.len())], "safety_number_available": true,
         "root_source": source,
     }))
 }
@@ -262,19 +257,6 @@ fn handle(state: &mut State, all: &BTreeMap<String, Value>, method: &str, body: 
             let root = format!("cm-{principal}");
             state.contacts.push((principal.clone(), root.clone(), "lookup"));
             json!({ "contact": entry(&principal, &root, "lookup") })
-        }
-        "contact.safety_number" => json!({
-            "verification_state": "unverified",
-            "expected": { "contact_identity_commitment": text(body, "contact_identity_commitment") }
-        }),
-        "contact.verify" => {
-            let commitment = text(&body["expected"], "contact_identity_commitment");
-            for contact in &mut state.contacts {
-                if contact.1 == commitment {
-                    contact.2 = "verified";
-                }
-            }
-            json!({ "verification_state": "verified" })
         }
         "contact.card.export" => json!({ "card": MY_CARD, "link": MY_LINK }),
         "identity.directory" => {

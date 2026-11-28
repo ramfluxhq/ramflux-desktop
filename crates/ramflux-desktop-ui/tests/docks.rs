@@ -44,7 +44,7 @@ fn objects_dock_lists_transfers_and_pulls(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn contacts_dock_answers_requests_and_verifies(cx: &mut TestAppContext) {
+fn contacts_dock_answers_requests(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s04_safety");
     advance(cx, 1_000);
     click(cx, handle, "rail-contacts");
@@ -53,22 +53,6 @@ fn contacts_dock_answers_requests_and_verifies(cx: &mut TestAppContext) {
         window.within("contacts-request-m-noor").click("accept", cx)
     });
     assert_eq!(last_body(cx, &shell, methods::CONTACT_ACCEPT)["moment_id"], "m-noor");
-    // Verify opens the comparison; nothing is marked until the numbers match.
-    let verifies = |cx: &mut TestAppContext| {
-        bodies(cx, &shell).iter().filter(|(m, _)| m == methods::SAFETY_VERIFY).count()
-    };
-    let before = verifies(cx);
-    in_window(cx, handle, |window, cx| window.within("contacts-p-mira").click("verify", cx));
-    assert!(exists(cx, handle, "contact-verify-number"), "the number to compare is shown");
-    assert_eq!(verifies(cx), before, "opening the comparison verifies nothing");
-    in_window(cx, handle, |window, cx| window.click("verify-cancel", cx));
-    assert!(!exists(cx, handle, "contact-verify"));
-    in_window(cx, handle, |window, cx| window.within("contacts-p-mira").click("verify", cx));
-    in_window(cx, handle, |window, cx| window.click("verify-confirm", cx));
-    assert_eq!(last_body(cx, &shell, methods::SAFETY_VERIFY)["participant_id"], "p-mira");
-    advance(cx, 200);
-    let safety = with_store(cx, &shell, |s| s.participant(&"p-mira".into()).map(|p| p.safety));
-    assert_eq!(safety, Some(ramflux_desktop_core::SafetyState::Verified));
 }
 
 #[gpui_kit::test]
@@ -242,110 +226,24 @@ fn the_whole_dock_layout_persists_and_restores_under_its_schema(cx: &mut TestApp
 }
 
 #[gpui_kit::test]
-fn a_changed_key_is_refused_without_an_acknowledgement(cx: &mut TestAppContext) {
-    // The scripted scenario holds a contact whose key changed. The daemon
-    // never reports that state for a directory identity, so the production
-    // translator cannot reach it; this guards that the acknowledgement strip
-    // is for a stale verification only, and that a key change still refuses
-    // the call.
+fn a_call_to_a_changed_contact_opens_the_identity_sheet(cx: &mut TestAppContext) {
+    // The scripted scenario holds Chen, whose identity changed at 500 ms: the
+    // header carries the banner, and Call asks for the review instead of
+    // placing a call.
     let (handle, shell) = open(cx, "s04_safety");
     advance(cx, 1_000);
-    show_context(cx, handle, &shell, "c-mira");
-    let mira = with_store(cx, &shell, |s| s.participant(&"p-mira".into()).cloned()).expect("mira");
-    assert_eq!(mira.safety, ramflux_desktop_core::SafetyState::KeyChanged);
-    assert!(exists(cx, handle, "safety-banner-p-mira"), "the sticky danger banner");
+    show_context(cx, handle, &shell, "c-chen");
+    let chen = with_store(cx, &shell, |s| s.participant(&"p-chen".into()).cloned()).expect("chen");
+    assert_eq!(chen.identity, ramflux_desktop_core::IdentityState::Changed);
+    assert!(exists(cx, handle, "identity-banner-p-chen"), "the banner");
     let reason = with_store(cx, &shell, |s| {
-        ramflux_desktop_ui::workspace::call_blocked(s, &ContextId::new("c-mira"))
+        ramflux_desktop_ui::workspace::call_blocked(s, &ContextId::new("c-chen"))
     });
-    assert_eq!(
-        reason.as_deref(),
-        Some(ramflux_desktop_ui::i18n::tr("call.blocked.safety").as_ref()),
-        "a key change refuses the call"
-    );
-    let disabled = in_window(cx, handle, |window, _| window.find("conversation-call").disabled());
-    assert_eq!(disabled, Some(true));
+    assert_eq!(reason, None, "the gate opens the sheet instead of disabling Call");
     click(cx, handle, "conversation-call");
-    assert!(!exists(cx, handle, "call-stale-ack"), "no acknowledgement for a key change");
+    assert!(exists(cx, handle, "identity-sheet-text"), "the identity change sheet");
     assert!(
         !bodies(cx, &shell).iter().any(|(m, _)| m == methods::CALL_INVITE),
         "nothing is placed"
     );
-}
-
-fn adds(cx: &mut TestAppContext, shell: &gpui_kit::Entity<ramflux_desktop_ui::Shell>) -> usize {
-    bodies(cx, shell).iter().filter(|(m, _)| m == methods::GROUP_ADD_MEMBER).count()
-}
-
-#[gpui_kit::test]
-fn adding_a_stale_contact_to_a_group_asks_before_any_request(cx: &mut TestAppContext) {
-    let (handle, shell) = open(cx, "s05_group_safety");
-    advance(cx, 500);
-    click(cx, handle, "rail-members");
-    assert!(exists(cx, handle, "dock-content-members"));
-    in_window(cx, handle, |window, cx| window.within("member-add-p-sam").click("add", cx));
-    assert!(exists(cx, handle, "member-add-stale-ack"), "the inline acknowledgement");
-    let prompt = ramflux_desktop_ui::i18n::tr_args("identity.ack.add", &[("name", "Sam Ortiz")]);
-    assert!(has_label(cx, handle, &prompt), "names the contact: {prompt}");
-    assert_eq!(adds(cx, &shell), 0, "nothing is requested before Continue");
-    // Verify again leaves the question and requests nothing either.
-    in_window(cx, handle, |window, cx| {
-        window.within("member-add-stale-ack").click("stale-verify", cx)
-    });
-    assert_eq!(adds(cx, &shell), 0, "Verify again adds nobody");
-    in_window(cx, handle, |window, cx| {
-        window.within("member-add-stale-ack").click("stale-continue", cx)
-    });
-    assert!(!exists(cx, handle, "member-add-stale-ack"), "the question is answered");
-    let body = last_body(cx, &shell, methods::GROUP_ADD_MEMBER);
-    assert_eq!(
-        (body["participant_id"].as_str(), body["context_id"].as_str()),
-        (Some("p-sam"), Some("c-garden"))
-    );
-    assert_eq!(adds(cx, &shell), 1);
-}
-
-#[gpui_kit::test]
-fn a_changed_or_forked_contact_cannot_be_added_to_a_group(cx: &mut TestAppContext) {
-    let (handle, shell) = open(cx, "s05_group_safety");
-    advance(cx, 500);
-    click(cx, handle, "rail-members");
-    for who in ["p-kay", "p-fox"] {
-        let row = format!("member-add-{who}");
-        let target = row.clone();
-        let disabled =
-            in_window(cx, handle, move |window, _| window.within(target).find("add").disabled());
-        assert_eq!(disabled, Some(true), "{who} add is refused");
-        in_window(cx, handle, move |window, cx| window.within(row).click("add", cx));
-    }
-    assert!(!exists(cx, handle, "member-add-stale-ack"), "no acknowledgement for a refusal");
-    assert_eq!(adds(cx, &shell), 0, "no request at all");
-}
-
-#[gpui_kit::test]
-fn a_pending_question_goes_when_the_contact_joins_by_another_route(cx: &mut TestAppContext) {
-    let (handle, shell) = open(cx, "s05_group_safety");
-    advance(cx, 500);
-    click(cx, handle, "rail-members");
-    in_window(cx, handle, |window, cx| window.within("member-add-p-sam").click("add", cx));
-    assert!(exists(cx, handle, "member-add-stale-ack"), "Sam is asked about");
-    // Another contact is added, and the daemon brings Sam in with them.
-    in_window(cx, handle, |window, cx| window.within("member-add-p-zed").click("add", cx));
-    advance(cx, 500);
-    let sam_in = with_store(cx, &shell, |s| {
-        s.context(&ContextId::new("c-garden"))
-            .is_some_and(|c| c.participants.contains(&"p-sam".into()))
-    });
-    assert!(sam_in, "Sam is a member now");
-    assert!(!exists(cx, handle, "member-add-stale-ack"), "the question is gone with the candidate");
-}
-
-#[gpui_kit::test]
-fn a_refusal_carries_an_icon_not_only_a_colour(cx: &mut TestAppContext) {
-    let (handle, _shell) = open(cx, "s05_group_safety");
-    advance(cx, 500);
-    click(cx, handle, "rail-members");
-    for who in ["p-kay", "p-fox"] {
-        assert!(exists(cx, handle, &format!("member-refused-{who}")), "{who}");
-    }
-    assert!(!exists(cx, handle, "member-refused-p-sam"));
 }

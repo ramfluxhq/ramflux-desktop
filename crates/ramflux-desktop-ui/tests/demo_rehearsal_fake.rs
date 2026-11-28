@@ -120,7 +120,6 @@ fn every_step_passes_on_a_node_that_behaves(cx: &mut TestAppContext) {
     let notes = |n: u8| steps.rows()[usize::from(n - 1)].notes.join("; ");
     assert!(notes(2).contains("confirmed with one tap"), "{}", notes(2));
     assert!(notes(2).contains("the daemon pinned that key"), "{}", notes(2));
-    assert!(notes(4).contains("safety number verified"), "{}", notes(4));
     assert!(notes(4).contains("from the contact card Bob's desktop shows"), "{}", notes(4));
     assert!(notes(4).contains("by principal id"), "{}", notes(4));
     assert!(notes(4).contains("reachable at once"), "{}", notes(4));
