@@ -34,6 +34,14 @@ pub fn start<H: Host, D: DemoDaemon>(
         if page != Page::Entry(EntryStep::Node) {
             return Err(format!("desktop {} opened on {page:?}, not the node step", desk.tag));
         }
+        // The daemon line is a technical detail: open the disclosure of the
+        // card (a node waits) or of the page (none does).
+        let toggle = if desk.exists(demo.host, "entry-node-details-toggle") {
+            "entry-node-details-toggle"
+        } else {
+            "node-details-toggle"
+        };
+        desk.click(demo.host, None, toggle)?;
         if !desk.exists(demo.host, "entry-daemon-info") {
             return Err(format!("desktop {} does not show its daemon", desk.tag));
         }

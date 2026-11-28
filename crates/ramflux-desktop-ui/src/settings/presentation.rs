@@ -3,12 +3,12 @@
 
 //! Generated presentation slots around existing settings behavior owners.
 use crate::i18n::tr;
-use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _};
+use gpui_kit::component::IconName;
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, ElementId, IntoElement, Role, SharedString, TestSupportExt as _, div,
 };
-use ramflux_desktop_navigation::scale::{space, text_caption};
+use ramflux_desktop_navigation::scale::space;
 use ramflux_desktop_navigation::{generated::catalog, palette};
 
 pub(super) fn contract_reason(gap: ramflux_desktop_sdk::business::ContractGap) -> SharedString {
@@ -64,26 +64,6 @@ pub(super) fn notice(
             crate::i18n::sentences(&title, &description),
             cx,
         ))
-        .into_any_element()
-}
-
-/// One muted line with a warning icon: a cautious fact with no action.
-pub(super) fn compact_warning(
-    id: impl Into<ElementId>,
-    title: SharedString,
-    cx: &App,
-) -> AnyElement {
-    ramflux_desktop_navigation::direction::h_flex()
-        .id(id)
-        .test_support()
-        .role(Role::Status)
-        .aria_label(title.clone())
-        .gap(space(2.))
-        .min_w_0()
-        .text_size(text_caption())
-        .text_color(cx.theme().muted_foreground)
-        .child(Icon::new(IconName::TriangleAlert).xsmall().text_color(cx.theme().warning))
-        .child(div().min_w_0().truncate().child(title))
         .into_any_element()
 }
 

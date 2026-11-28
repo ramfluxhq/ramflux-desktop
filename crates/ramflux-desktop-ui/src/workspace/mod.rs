@@ -72,6 +72,7 @@ use sections::{
 use docks::approvals::ApprovalsDock;
 use docks::contacts::{ContactsDock, ContactsDockEvent};
 use docks::evidence::EvidenceDock;
+use docks::profile::ProfileDock;
 use docks::members::{MembersDock, MembersDockEvent};
 use docks::objects::ObjectsDock;
 
@@ -100,6 +101,7 @@ pub struct Workspace {
     contacts: Entity<ContactsDock>,
     members: Entity<MembersDock>,
     evidence: Entity<EvidenceDock>,
+    profile: Entity<ProfileDock>,
     call_bar: Entity<CallBar>,
     incoming_call: Entity<IncomingCall>,
     groups: Entity<GroupDirectory>,
@@ -154,6 +156,9 @@ impl Workspace {
         let members = cx.new(|cx| MembersDock::new(store.clone(), sink.clone(), cx));
         let approvals = cx.new(|cx| ApprovalsDock::new(store.clone(), sink.clone(), cx));
         let evidence = cx.new(|cx| EvidenceDock::new(store.clone(), cx));
+        let profile = cx.new(|cx| {
+            ProfileDock::new(store.clone(), contacts.clone(), evidence.clone(), cx)
+        });
         let call_bar = cx.new(|cx| CallBar::new(store.clone(), sink.clone(), window, cx));
         let incoming_call = cx.new(|cx| IncomingCall::new(store.clone(), sink.clone(), cx));
         let groups = cx.new(|cx| GroupDirectory::new(store.clone(), window, cx));
@@ -167,7 +172,7 @@ impl Workspace {
             cx.new(|cx| sections::agents::AgentRoster::new(store.clone(), window, cx));
         let contents: [(DockTool, gpui_kit::AnyView); 5] = [
             (DockTool::Objects, objects.clone().into()),
-            (DockTool::Contacts, contacts.clone().into()),
+            (DockTool::Contacts, profile.clone().into()),
             (DockTool::Members, members.clone().into()),
             (DockTool::Approvals, approvals.into()),
             (DockTool::Evidence, evidence.clone().into()),
@@ -450,6 +455,7 @@ impl Workspace {
             contacts,
             members,
             evidence,
+            profile,
             call_bar,
             incoming_call,
             groups,
@@ -601,6 +607,7 @@ impl Workspace {
         self.stack.update(cx, |stack, cx| stack.set_current(None, cx));
         self.members.update(cx, |dock, cx| dock.set_context(None, cx));
         self.evidence.update(cx, |dock, cx| dock.set_context(None, cx));
+        self.profile.update(cx, |dock, cx| dock.set_context(None, cx));
         if let Some(open) = self.open_tool
             && self.prefs.pinned != Some(open)
         {
@@ -670,7 +677,8 @@ impl Workspace {
         self.composer.update(cx, |composer, cx| composer.set_sink(id.clone(), sink, window, cx));
         self.stack.update(cx, |stack, cx| stack.set_current(id.clone(), cx));
         self.members.update(cx, |dock, cx| dock.set_context(id.clone(), cx));
-        self.evidence.update(cx, |dock, cx| dock.set_context(id, cx));
+        self.evidence.update(cx, |dock, cx| dock.set_context(id.clone(), cx));
+        self.profile.update(cx, |dock, cx| dock.set_context(id, cx));
         if switching
             && let Some(open) = self.open_tool
             && self.prefs.pinned != Some(open)
@@ -935,9 +943,16 @@ impl Render for Workspace {
         // is open, and in the open panel's header otherwise (design H01).
         let open_tool = self.open_tool;
         self.conversation.update(cx, |conversation, _| conversation.set_open_tool(open_tool));
+        let rail = {
+            let store = self.store.read(cx).store();
+            DockTool::rail(store, self.current.as_ref().and_then(|id| store.context(id)))
+        };
         for slot in &self.tools {
             let shown = open_tool == Some(slot.tool);
-            slot.panel.update(cx, |panel, _| panel.set_shown(shown));
+            slot.panel.update(cx, |panel, _| {
+                panel.set_shown(shown);
+                panel.set_rail(rail.clone());
+            });
         }
         let gate = schema_gate::active(self.store.read(cx));
         let blocking =

@@ -29,6 +29,9 @@ use crate::style::DesignButton as _;
 pub(super) struct RemoveDialog {
     /// The locked account the dialog is about.
     account: AccountId,
+    /// Its display name, read when the dialog opened (the account is gone
+    /// when the removal is reported).
+    name: gpui_kit::SharedString,
     /// The "I understand" box.
     acknowledged: bool,
     /// The store's failure count when the request was sent; `Some` while
@@ -57,9 +60,10 @@ impl EntryPage {
         cx: &mut Context<Self>,
     ) {
         self.lock_notice = None;
-        self.removed_notice = false;
+        self.removed_notice = None;
+        let name = self.account_name(&account, cx);
         self.remove_dialog =
-            Some(RemoveDialog { account, acknowledged: false, sent: None, failed: false });
+            Some(RemoveDialog { account, name, acknowledged: false, sent: None, failed: false });
         let focus = self.remove_focus.clone();
         window.defer(cx, move |window, cx| window.focus(&focus, cx));
         cx.notify();
@@ -109,8 +113,7 @@ impl EntryPage {
         let target = self.unlock_target(cx);
         let store = self.store.read(cx).entry_store();
         if store.account(&dialog.account).is_none() {
-            self.remove_dialog = None;
-            self.removed_notice = true;
+            self.removed_notice = self.remove_dialog.take().map(|dialog| dialog.name);
             cx.notify();
             return;
         }
@@ -136,12 +139,8 @@ impl EntryPage {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let dialog = self.remove_dialog.as_ref()?;
-        let name = self
-            .store
-            .read(cx)
-            .entry_store()
-            .account(&dialog.account)
-            .map_or_else(|| dialog.account.to_string(), |account| account.label.clone());
+        let name = dialog.name.clone();
+        let short = super::parts::short_id(dialog.account.as_str());
         let this = cx.entity().downgrade();
         let close = {
             let this = this.clone();
@@ -167,7 +166,24 @@ impl EntryPage {
         let body = v_flex()
             .id("lock-remove-body")
             .gap(space(3.))
-            .child(div().text_size(text_secondary()).font_semibold().child(name))
+            .child(
+                v_flex()
+                    .id("lock-remove-account")
+                    .child(
+                        div()
+                            .id("lock-remove-name")
+                            .text_size(text_secondary())
+                            .font_semibold()
+                            .child(name),
+                    )
+                    .child(
+                        div()
+                            .id("lock-remove-short-id")
+                            .text_size(text_caption())
+                            .text_color(cx.theme().muted_foreground)
+                            .child(short),
+                    ),
+            )
             .child(div().text_size(text_secondary()).child(tr("entry.remove.body")))
             .child(
                 DesignCheckbox::new("lock-remove-ack")

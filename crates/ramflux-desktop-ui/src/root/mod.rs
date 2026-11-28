@@ -224,6 +224,13 @@ impl IntentRoot {
         let path = format_path(&event.scope_path);
         let kind = ui_event_name(&event);
         let intent = intent_for(&event, self.store.read(cx).store()).map(Intent::human);
+        // The press of "Trust this node" is itself the human confirmation of a
+        // first-use pin: no second strip follows it.
+        let intent = if matches!(event.kind, ramflux_desktop_core::UiEventKind::ConfirmNodePressed { .. }) {
+            intent.map(|intent| intent.confirmed_by_human(self.issuer.issue_tap()))
+        } else {
+            intent
+        };
         let outcome = match intent {
             None => UiOutcome::Ignored,
             Some(intent) => {

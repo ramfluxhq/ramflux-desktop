@@ -1457,11 +1457,11 @@ impl Task {
             && !error.is_connection_lost()
         {
             self.read_recovery.succeeded(fetch);
+            // The typed code only: the daemon's message is not for a label.
             let reason = match error {
-                BusError::Daemon { reason_code: Some(code), message, .. } => {
-                    format!("{code}: {message}")
-                }
-                other => other.message(),
+                BusError::Daemon { reason_code: Some(code), .. } => code.clone(),
+                BusError::Daemon { code, .. } => code.clone(),
+                BusError::Transport(_) | BusError::Timeout => "unreachable".to_owned(),
             };
             return self.emit(crate::translate::account::username_unavailable(reason));
         }

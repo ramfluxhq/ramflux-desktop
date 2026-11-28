@@ -57,7 +57,7 @@ fn settings(
 }
 
 #[gpui_kit::test]
-fn entry_adds_a_tofu_node_with_confirmation(cx: &mut TestAppContext) {
+fn entry_adds_a_tofu_node_and_one_press_trusts_it(cx: &mut TestAppContext) {
     let (handle, shell) = harbor_confirmed(cx);
     click(cx, handle, "entry-review-nodes");
     type_into(cx, handle, "node-url", "https://studio.example.org");
@@ -65,23 +65,8 @@ fn entry_adds_a_tofu_node_with_confirmation(cx: &mut TestAppContext) {
     assert_eq!(last_body(cx, &shell, methods::NODE_ADD)["url"], "https://studio.example.org");
     advance(cx, 400);
     assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Node));
-    let confirms = |cx: &mut TestAppContext| {
-        effects(cx, &shell).iter().filter(|l| *l == methods::NODE_CONFIRM).count()
-    };
-    let before = confirms(cx);
     click_in(cx, handle, "node-n-studio", "node-confirm");
-    assert!(strip_open(cx, &shell), "trusting a key on first use needs the confirmation");
-    let (page_bounds, footer, strip) = in_window(cx, handle, |window, _| {
-        let page = window.find("entry").bounds();
-        (page, window.find("entry-confirm-footer").bounds(), window.find("confirm-accept").bounds())
-    });
-    assert!(
-        page_bounds.bottom() <= footer.top() && footer.top() < strip.top(),
-        "the confirm strip is a footer below the scrolling entry content, never over it: \
-         {page_bounds:?} {footer:?} {strip:?}"
-    );
-    assert_eq!(confirms(cx), before, "nothing is pinned before the confirmation");
-    tap_confirm(cx, handle);
+    assert!(!strip_open(cx, &shell), "the press of Trust this node is the confirmation");
     let body = last_body(cx, &shell, methods::NODE_CONFIRM);
     assert_eq!(body["node_id"], "n-studio");
     assert_eq!(body["fingerprint"], "SHA256:e21f 9c07 3b5a 0d88 41e6 f2c9 7a13 5d06");
@@ -104,7 +89,7 @@ fn entry_offers_only_the_full_restore(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn settings_lock_returns_to_entry_and_unlock_sends_the_secret(cx: &mut TestAppContext) {
+fn settings_lock_shows_the_lock_page_and_unlock_sends_the_secret(cx: &mut TestAppContext) {
     let (handle, shell) = open(cx, "s09_multi_account_day");
     advance(cx, 1_000);
     assert_eq!(page(cx, &shell), Page::Workspace);
@@ -112,7 +97,7 @@ fn settings_lock_returns_to_entry_and_unlock_sends_the_secret(cx: &mut TestAppCo
     click(cx, handle, "settings-lock");
     assert!(last_body(cx, &shell, methods::ACCOUNT_LOCK)["account_id"].is_string());
     advance(cx, 100);
-    assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Account), "locking returns to entry");
+    assert_eq!(page(cx, &shell), Page::Lock, "locking shows the lock page, not the entry steps");
     assert!(!cx.update(|cx| shell.read(cx).is_settings_open()));
 
     type_into(cx, handle, "passphrase", "river stone lantern");

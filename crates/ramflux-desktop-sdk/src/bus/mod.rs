@@ -304,7 +304,8 @@ impl BusError {
                 TRANSPORT_SECURITY_KEY.to_owned()
             }
             Self::Daemon { message, .. } => message.clone(),
-            Self::Transport(message) => message.clone(),
+            // Transport text (a socket path, an OS error) is never a label.
+            Self::Transport(_) => NETWORK_KEY.to_owned(),
             Self::Timeout => TIMEOUT_KEY.to_owned(),
         }
     }
@@ -330,6 +331,9 @@ pub fn vault_failure_key(reason: VaultReason) -> &'static str {
 
 /// Locale key of the timeout message (translated by the UI).
 pub const TIMEOUT_KEY: &str = "backend.failure.timeout";
+
+/// Locale key of the message for a broken or missing connection.
+pub const NETWORK_KEY: &str = "backend.failure.network";
 
 /// Locale key of the message for a session the node refused as
 /// unauthenticated (not retried).

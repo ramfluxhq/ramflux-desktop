@@ -6,9 +6,9 @@
 //! and import.
 
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
-use gpui_kit::component::v_flex;
+use gpui_kit::component::{Sizable as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, SharedString, div};
 use ramflux_desktop_core::{Device, Listing, SourceStatus, SyncDirection, UiEventKind};
@@ -61,7 +61,13 @@ pub(crate) fn page(
         context.store.read(cx).store(),
         ramflux_desktop_core::methods::DEVICE_SYNC_EXPORT,
     );
-    let render_list = move |cx: &mut App| -> gpui_kit::AnyElement {
+    let render_list = move |window: &mut gpui_kit::Window, cx: &mut App| -> gpui_kit::AnyElement {
+        // The devices whose "Technical details" are open (view-local).
+        let open_details = window.use_keyed_state(
+            "settings-devices-details",
+            cx,
+            |_, _| std::collections::BTreeSet::<String>::new(),
+        );
         if devices.is_empty() {
             let (title, description, kind) = if let Some(reason) = failure.as_ref() {
                 (tr("settings_ui.devices_error"), reason.clone(), catalog::StateKind::Error)
@@ -94,7 +100,8 @@ pub(crate) fn page(
                 let detail = if device.revoked {
                     tr("settings.devices.revoked")
                 } else if device.this_device {
-                    tr("settings.devices.this")
+                    // The title and the chip already say it.
+                    SharedString::default()
                 } else {
                     device.last_seen.map_or_else(
                         || tr("settings.devices.never"),
@@ -123,17 +130,7 @@ pub(crate) fn page(
                         })
                 });
                 // A chip for this device or a revoked one, else the action.
-                let unverified_origin = !device.this_device
-                    && !device.revoked
-                    && ramflux_desktop_core::projection::devices::trust(device, None)
-                        == ramflux_desktop_core::projection::devices::DeviceTrust::Unverified;
-                let chip = if unverified_origin {
-                    Some(crate::workspace::sections::warning_chip(
-                        "device-origin-chip",
-                        tr("settings.devices.unverified_chip"),
-                        cx,
-                    ))
-                } else if device.this_device {
+                let chip = if device.this_device {
                     Some(super::design::chip(tr("settings.devices.this_chip"), cx))
                 } else if device.revoked {
                     Some(super::design::chip(tr("settings.devices.revoked_chip"), cx))
@@ -151,55 +148,79 @@ pub(crate) fn page(
                     .test_support()
                     .min_w_0()
                     .child(super::design::row(
-                        ramflux_desktop_navigation::row::list_text(&device.label),
-                        i18n::join(&detail, &device.id.to_string()),
+                        // A person's name for the device; its id is only in the
+                        // disclosure below.
+                        tr(if device.this_device {
+                            "settings.devices.this_device"
+                        } else {
+                            "settings.devices.other_device"
+                        }),
+                        detail,
                         Some(action.into_any_element()),
                         cx,
                     ))
-                    .when(
-                        trust == ramflux_desktop_core::projection::devices::DeviceTrust::Unverified,
-                        |row| {
-                            // Revoked rows and this device carry no actionable
-                            // origin risk: one compact line keeps the cautious
-                            // fact without repeating the full warning.
-                            if device.revoked || device.this_device {
-                                row.child(presentation::compact_warning(
-                                    "device-origin-note",
-                                    tr("settings_ui.origin_unknown"),
-                                    cx,
-                                ))
-                            } else {
-                                // Board G08 ("Chrome · macOS"): the operator
-                                // risk as the row's own wrapped line under a
-                                // warning chip, not a separate block.
-                                row.child(
+                    .child({
+                        let key = device.id.to_string();
+                        let open = open_details.read(cx).contains(&key);
+                        let toggle_state = open_details.clone();
+                        let toggle_key = key.clone();
+                        v_flex()
+                            .id(domain_id("device-technical", &device.id))
+                            .test_support()
+                            .gap(space(1.))
+                            .child(
+                                h_flex().child(
+                                    Button::new(domain_id("device-details-toggle", &device.id))
+                                        .ghost()
+                                        .small()
+                                        .icon(if open {
+                                            gpui_kit::component::IconName::ChevronDown
+                                        } else {
+                                            ramflux_desktop_navigation::direction::forward_icon()
+                                        })
+                                        .label(tr("node.details"))
+                                        .on_click(move |_, window, cx| {
+                                            toggle_state.update(cx, |set, cx| {
+                                                if !set.remove(&toggle_key) {
+                                                    set.insert(toggle_key.clone());
+                                                }
+                                                cx.notify();
+                                            });
+                                            window.refresh();
+                                        }),
+                                ),
+                            )
+                            .when(open, |column| {
+                                column.child(
                                     div()
-                                        .id("device-origin-warning")
+                                        .id(domain_id("device-id", &device.id))
                                         .test_support()
-                                        .role(gpui_kit::Role::Status)
-                                        .aria_label(crate::i18n::sentences(
-                                            &tr("settings_ui.origin_unknown"),
-                                            &tr("settings_ui.origin_warning"),
-                                        ))
-                                        .pb(space(3.))
-                                        .border_b_1()
-                                        .border_color(palette(cx).line)
-                                        .child(
-                                            div()
-                                                .id("device-origin-description")
-                                                .test_support()
-                                                .whitespace_normal()
-                                                .text_size(gpui_kit::rems(
-                                                    palette(cx).size_secondary / 15.0,
-                                                ))
-                                                .text_color(palette(cx).secondary)
-                                                .child(i18n::join(
-                                                    &tr("settings_ui.origin_unknown"),
-                                                    &tr("settings_ui.origin_warning"),
-                                                )),
-                                        ),
+                                        .text_size(gpui_kit::rems(palette(cx).size_secondary / 15.0))
+                                        .text_color(palette(cx).secondary)
+                                        .child(SharedString::from(device.id.to_string())),
                                 )
-                            }
+                            })
+                    })
+                    .when(
+                        trust == ramflux_desktop_core::projection::devices::DeviceTrust::Unverified
+                            && !device.revoked
+                            && !device.this_device,
+                        |row| {
+                            // The daemon lists no platform or origin facts yet:
+                            // another device says so in one neutral line.
+                            row.child(
+                                div()
+                                    .id("device-origin-note")
+                                    .test_support()
+                                    .role(gpui_kit::Role::Status)
+                                    .aria_label(tr("settings.devices.no_details"))
+                                    .pb(space(3.))
+                                    .border_b_1()
+                                    .border_color(palette(cx).line)
+                                    .text_size(gpui_kit::rems(palette(cx).size_secondary / 15.0))
+                                    .text_color(palette(cx).secondary)
+                                    .child(tr("settings.devices.no_details")),
+                            )
                         },
                     )
             }))
@@ -208,8 +229,8 @@ pub(crate) fn page(
     // Design G08: "Linked devices" with the primary "Link a new device" at its
     // head (no approval contract yet: disabled with the reason), the rows,
     // then the sync section.
-    let linked = SettingItem::render(move |_, _, cx: &mut App| {
-        let rows = render_list(cx);
+    let linked = SettingItem::render(move |_, window, cx: &mut App| {
+        let rows = render_list(window, cx);
         super::design::section("devices-linked", SharedString::default(), cx)
             .child(
                 h_flex()
@@ -230,6 +251,7 @@ pub(crate) fn page(
                         cx,
                     )),
             )
+            .child(super::design::help(tr("settings.devices.link_unavailable"), cx))
             .child(rows)
             .into_any_element()
     });
@@ -264,6 +286,11 @@ pub(crate) fn page(
         super::design::section("devices-sync", tr("settings.devices.sync"), cx)
             .child(super::design::help(tr("settings.devices.sync_help"), cx))
             .child(buttons)
+            .children(
+                export_reason
+                    .is_some()
+                    .then(|| super::design::help(tr("settings.devices.link_unavailable"), cx)),
+            )
             .into_any_element()
     });
     SettingPage::new(tr("settings.section.devices"))

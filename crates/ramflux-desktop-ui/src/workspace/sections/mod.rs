@@ -25,5 +25,4 @@ pub mod tasks;
 
 pub use contacts::{ContactsDirectory, ContactsDirectoryEvent};
 pub use groups::{GroupDirectory, GroupDirectoryEvent};
-pub(crate) use stranger_detail::warning_chip;
 pub use strangers::{StrangersArea, StrangersEvent};

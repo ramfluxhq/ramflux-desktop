@@ -58,6 +58,9 @@ fn an_empty_daemon_shows_the_node_step_with_its_status(cx: &mut TestAppContext) 
         with_store(cx, &shell, |s| s.source_status() == SourceStatus::Connected)
     });
     assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Node), "no node yet");
+    // The socket is a technical detail: one click on "Technical details" away.
+    assert!(!exists(cx, handle, "entry-daemon-info"), "the details are collapsed");
+    click(cx, handle, "entry-node-details-toggle");
     assert!(exists(cx, handle, "entry-daemon-info"), "the daemon's socket and accounts show");
     wait(cx, "nodes listed", |cx| with_store(cx, &shell, |s| s.is_listed(Listing::Nodes)));
     assert!(exists(cx, handle, "entry-node-empty"), "an empty node list is an explicit state");

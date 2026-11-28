@@ -60,3 +60,15 @@ pub(super) fn clock(remaining_ms: u64) -> String {
     let seconds = remaining_ms.div_ceil(1_000);
     format!("{}:{:02}", seconds / 60, seconds % 60)
 }
+
+/// The short form of an account id for the one line where two accounts can
+/// share a name (the account picker and the remove dialog): the first eight
+/// characters after the type prefix, in two groups of four.
+pub(super) fn short_id(id: &str) -> String {
+    let tail = id.split_once('-').map_or(id, |(_, rest)| rest);
+    let head: Vec<char> = tail.chars().filter(|c| !c.is_whitespace()).take(8).collect();
+    let (first, second) = head.split_at(head.len().min(4));
+    let first: String = first.iter().collect();
+    let second: String = second.iter().collect();
+    if second.is_empty() { first } else { format!("{first} {second}") }
+}

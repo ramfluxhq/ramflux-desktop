@@ -18,7 +18,7 @@
 //! never confirms or cancels it.
 
 use crate::actions::{CONFIRM_CONTEXT, CancelConfirmation};
-use crate::i18n::{self, tr, tr_args};
+use crate::i18n::{tr, tr_args};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, ThemeStyled as _, v_flex};
 use gpui_kit::prelude::*;
@@ -142,15 +142,19 @@ impl Render for ConfirmStrip {
         let Some(request) = self.request.clone() else {
             return div().id("confirm-strip").into_any_element();
         };
-        let accent = if request.risk().requires_confirmation() {
-            cx.theme().danger
+        // The design's button roles: a destructive confirm is red, any other
+        // is the primary button; Cancel is always the secondary one on its
+        // left. No risk badge: the sentence carries the weight.
+        let palette = ramflux_desktop_navigation::palette(cx);
+        let destructive = request.is_destructive();
+        let accent = if destructive { palette.danger } else { palette.text };
+        let (accept_fill, accept_label) = if destructive {
+            (palette.danger, palette.on_danger)
         } else {
-            cx.theme().warning
+            (palette.primary, palette.on_primary)
         };
         let confirm_label = tr("confirm.accept");
-        let risk = i18n::risk(request.risk());
-        let announce =
-            tr_args("confirm.announce", &[("summary", request.summary()), ("risk", &risk)]);
+        let announce = tr_args("confirm.announce", &[("summary", request.summary())]);
         let confirmable = request.is_confirmable();
         let focused = self.focus_handle.is_focused(window);
         let cancel_focused = self.cancel_focus.is_focused(window);
@@ -173,7 +177,11 @@ impl Render for ConfirmStrip {
             .border_color(accent)
             .rounded(cx.theme().radius_lg)
             .bg(cx.theme().group_box)
-            .child(Icon::new(IconName::TriangleAlert).text_color(accent))
+            .child(if destructive {
+                Icon::new(IconName::TriangleAlert).text_color(accent)
+            } else {
+                Icon::new(IconName::Info).text_color(cx.theme().muted_foreground)
+            })
             .child(
                 v_flex()
                     .flex_1()
@@ -194,20 +202,16 @@ impl Render for ConfirmStrip {
                                 .child(detail),
                         )
                     })
-                    .child(
-                        h_flex()
-                            .gap(space(2.))
-                            .text_size(text_caption())
-                            .child(div().text_color(accent).child(tr_args(
-                                "confirm.risk",
-                                &[("risk", &i18n::risk(request.risk()))],
-                            )))
-                            .when_some(request.proposed_by().cloned(), |row, agent| {
-                                row.child(div().text_color(cx.theme().muted_foreground).child(
-                                    tr_args("confirm.proposed_by_agent", &[("agent", &agent)]),
-                                ))
-                            }),
-                    ),
+                    .when_some(request.proposed_by().cloned(), |col, agent| {
+                        col.child(
+                            h_flex().gap(space(2.)).text_size(text_caption()).child(
+                                div().text_color(cx.theme().muted_foreground).child(tr_args(
+                                    "confirm.proposed_by_agent",
+                                    &[("agent", &agent)],
+                                )),
+                            ),
+                        )
+                    }),
             )
             .child(
                 div()
@@ -222,10 +226,11 @@ impl Render for ConfirmStrip {
                     .items_center()
                     .gap(space(1.))
                     .border_1()
-                    .border_color(cx.theme().border)
+                    .border_color(palette.text)
+                    .bg(palette.surface_white)
                     .rounded(cx.theme().radius)
                     .text_size(text_secondary())
-                    .text_color(cx.theme().foreground)
+                    .text_color(palette.text)
                     .cursor_pointer()
                     .when(cancel_focused, |control| control.focus_ring_style(window, cx))
                     .child(Icon::new(IconName::Close))
@@ -249,12 +254,10 @@ impl Render for ConfirmStrip {
                     .px(space(3.))
                     .flex()
                     .items_center()
-                    .border_1()
-                    .border_color(accent)
                     .rounded(cx.theme().radius)
-                    .bg(accent.opacity(0.15))
+                    .bg(accept_fill)
                     .text_size(text_secondary())
-                    .text_color(cx.theme().foreground)
+                    .text_color(accept_label)
                     .when(!confirmable, |control| control.opacity(0.4))
                     .when(confirmable, |control| control.cursor_pointer())
                     .when(focused, |control| control.focus_ring_style(window, cx))

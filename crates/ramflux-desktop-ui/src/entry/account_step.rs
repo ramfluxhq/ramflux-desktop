@@ -30,7 +30,7 @@ use unicode_width::UnicodeWidthStr;
 
 use super::remove::LockNotice;
 use super::{AccountPath, EntryPage};
-use crate::i18n::{self, tr, tr_args};
+use crate::i18n::{tr, tr_args};
 use crate::ids::domain_id;
 
 /// Takes the value of a masked input as a one-shot secret and clears it.
@@ -58,6 +58,18 @@ impl EntryPage {
             })
             .cloned()
             .or_else(|| Self::locked_account(store).map(|a| a.id.clone()))
+    }
+
+    /// The name an account is shown by: its display name, else "Account".
+    /// Never its id.
+    pub(super) fn account_name(&self, id: &AccountId, cx: &App) -> SharedString {
+        self.store
+            .read(cx)
+            .entry_store()
+            .account(id)
+            .map(|a| a.label.trim().to_owned())
+            .filter(|label| !label.is_empty())
+            .map_or_else(|| tr("entry.account.fallback"), SharedString::from)
     }
 
     fn locked_account(store: &Store) -> Option<&Account> {
@@ -92,18 +104,34 @@ impl EntryPage {
     pub fn unlock(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let account = self.unlock_target(cx);
         let secret = take_secret(&self.inputs.passphrase, window, cx);
+        // Return does nothing while the daemon holds a wait or exhaustion.
+        if account.as_ref().is_some_and(|id| self.code_held(id, cx)) {
+            return;
+        }
         let Some(account_id) = account.filter(|_| !secret.is_empty()) else { return };
         self.lock_notice = None;
-        self.removed_notice = false;
+        self.removed_notice = None;
         self.submitted = Some(account_id.clone());
         self.submit_secret(IntentKind::Unlock { account_id, secret }, window, cx);
+    }
+
+    /// Whether the daemon's wait after wrong codes runs, or the attempts are
+    /// used up, for `account`: no code is sent then.
+    fn code_held(&self, account: &AccountId, cx: &App) -> bool {
+        let handle = self.store.read(cx);
+        handle.entry_store().app_lock(account).is_some_and(|lock| {
+            lock.code_attempts_exhausted
+                || lock
+                    .code_retry_after_ms
+                    .is_some_and(|ms| crate::settings::account::remaining_ms(&self.code_clock, ms) > 0)
+        })
     }
 
     /// The user asked to recover `account` with its recovery phrase: the
     /// recovery screens open (nothing is sent yet).
     fn open_recovery(&mut self, account: AccountId, window: &mut Window, cx: &mut Context<Self>) {
         self.lock_notice = None;
-        self.removed_notice = false;
+        self.removed_notice = None;
         self.recovery.update(cx, |panel, cx| panel.open(account, window, cx));
         self.recovery_open = true;
         cx.notify();
@@ -180,13 +208,13 @@ impl EntryPage {
                 .child(self.render_unlock(&accounts, cx))
                 .into_any_element()
         };
-        let removed = self.removed_notice.then(|| {
+        let removed = self.removed_notice.as_ref().map(|name| {
             div()
                 .id("entry-removed")
                 .role(gpui_kit::Role::Status)
                 .text_size(text_caption())
                 .text_color(cx.theme().success)
-                .child(tr("entry.remove.done"))
+                .child(tr_args("entry.remove.done", &[("name", name)]))
         });
         v_flex().id("entry-account").gap(space(3.)).children(removed).child(body)
     }
@@ -280,14 +308,7 @@ impl EntryPage {
             let recoverable = offers
                 && account.lock_state == LockState::Locked
                 && account.kind == AccountKind::HumanInteractive;
-            let detail = tr_args(
-                "entry.account.detail",
-                &[
-                    ("kind", &i18n::account_kind(account.kind)),
-                    ("node", account.node_id.as_ref().map_or("", |n| n.as_str())),
-                    ("device", account.device_id.as_deref().unwrap_or("")),
-                ],
-            );
+            let detail = SharedString::from(super::parts::short_id(account.id.as_str()));
             h_flex()
                 .id(domain_id("account", &account.id))
                 .gap(space(3.))
@@ -325,9 +346,8 @@ impl EntryPage {
                         .children(recoverable.then(|| {
                             let id = account.id.clone();
                             Button::new(domain_id("account-recover", &account.id))
-                                .ghost()
-                                .small()
-                                .label(tr("recovery.entry.button"))
+                                .design_secondary(cx)
+                                .design_label(tr("recovery.entry.button"))
                                 .accessibility_label(tr_args(
                                     "recovery.entry.label",
                                     &[("name", &account.label)],
@@ -564,9 +584,10 @@ fn clip_label(label: &str, max: usize) -> (String, bool) {
 }
 
 impl EntryPage {
-    /// The lock view: the app name and, unless `cover`, the account code
-    /// field and its unlock button. Nothing of the accounts is named here.
-    /// While the recovery of the locked account is open it takes the place of
+    /// The lock view: the app name for the cover; for the lock page the
+    /// bound account's initial and display name with "Locked" under it, the
+    /// account code field and its unlock button. Nothing else of the accounts
+    /// is shown. While the recovery of the locked account is open it takes the place of
     /// the code form; the cover never shows it.
     pub(super) fn render_lock(
         &self,
@@ -591,7 +612,28 @@ impl EntryPage {
                 .into_any_element();
         }
         let muted = cx.theme().muted_foreground;
-        let title = div().id("lock-title").text_size(text_subheading()).child(tr("app.name"));
+        let bound = if cover { None } else { self.unlock_target(cx) };
+        let title = match &bound {
+            Some(id) => {
+                let name = self.account_name(id, cx);
+                v_flex()
+                    .id("lock-account")
+                    .gap(space(2.))
+                    .items_center()
+                    .child(crate::avatar::avatar(
+                        ramflux_desktop_navigation::row::initial(&name),
+                        ramflux_desktop_navigation::generated::catalog::AvatarKind::Person,
+                        ramflux_desktop_navigation::palette(cx),
+                    ))
+                    .child(div().id("lock-title").text_size(text_subheading()).child(name))
+                    .into_any_element()
+            }
+            None => div()
+                .id("lock-title")
+                .text_size(text_subheading())
+                .child(tr("app.name"))
+                .into_any_element(),
+        };
         let mut column = v_flex()
             .w_full()
             .max_w(gpui_kit::rems(360.0 / 15.0))
@@ -641,7 +683,57 @@ impl EntryPage {
             }
             let blocked = unlocking || waiting || exhausted;
             let refused_text = last_refusal.filter(|_| !unlocking);
-            if !exhausted {
+            // One status line, never stacked: the wait, else the wrong code,
+            // else a refusal the daemon did not type (the generic sentence).
+            // The notice of a wrong code at the recovery belongs to the
+            // exhausted page, above its title.
+            let status: Option<(&'static str, SharedString)> = if waiting {
+                // After a recovery phrase was accepted the same countdown says so.
+                let (id, key) = if self.lock_notice == Some(LockNotice::PhraseAccepted) {
+                    ("lock-phrase-accepted", "entry.app_lock.phrase_accepted_wait")
+                } else {
+                    ("lock-code-wait", "settings.app_lock.code_wait")
+                };
+                Some((
+                    id,
+                    tr_args(
+                        key,
+                        &[("time", &crate::settings::account::countdown(wait_ms))],
+                    ),
+                ))
+            } else if wrong_code {
+                Some(("lock-wrong-code", tr("entry.app_lock.wrong_code")))
+            } else if refused_text.is_some() {
+                Some(("lock-refused", tr("backend.failure.generic")))
+            } else if self.lock_notice == Some(LockNotice::WrongCode) && !exhausted {
+                Some(("lock-recovery-wrong-code", tr("recovery.ended.wrong_code")))
+            } else {
+                None
+            };
+            let status_line = status.map(|(id, text)| {
+                div()
+                    .id(id)
+                    .role(gpui_kit::Role::Status)
+                    .text_size(text_caption())
+                    .text_color(cx.theme().danger)
+                    .child(text)
+            });
+            if bound.is_some() && !exhausted {
+                column = column
+                    .child(
+                        div()
+                            .id("lock-help")
+                            .text_size(text_caption())
+                            .text_color(muted)
+                            .child(tr("entry.app_lock.locked")),
+                    )
+                    .child(
+                        div()
+                            .id("lock-instruction")
+                            .text_size(text_secondary())
+                            .child(tr("entry.lock.instruction")),
+                    );
+            } else if !exhausted {
                 column = column.child(
                     div()
                         .id("lock-help")
@@ -650,27 +742,7 @@ impl EntryPage {
                         .child(tr("entry.app_lock.locked")),
                 );
             }
-            if let Some(text) = refused_text {
-                column = column.child(
-                    div()
-                        .id("lock-refused")
-                        .role(gpui_kit::Role::Status)
-                        .text_size(text_caption())
-                        .text_color(cx.theme().danger)
-                        .child(text),
-                );
-            }
-            if wrong_code {
-                column = column.child(
-                    div()
-                        .id("lock-wrong-code")
-                        .role(gpui_kit::Role::Status)
-                        .text_size(text_caption())
-                        .text_color(cx.theme().danger)
-                        .child(tr("entry.app_lock.wrong_code")),
-                );
-            }
-            if self.lock_notice == Some(LockNotice::WrongCode) {
+            if exhausted && self.lock_notice == Some(LockNotice::WrongCode) {
                 column = column.child(
                     div()
                         .id("lock-recovery-wrong-code")
@@ -678,25 +750,6 @@ impl EntryPage {
                         .text_size(text_caption())
                         .text_color(cx.theme().danger)
                         .child(tr("recovery.ended.wrong_code")),
-                );
-            }
-            if waiting {
-                // After a recovery phrase was accepted the same countdown says so.
-                let (id, key) = if self.lock_notice == Some(LockNotice::PhraseAccepted) {
-                    ("lock-phrase-accepted", "entry.app_lock.phrase_accepted_wait")
-                } else {
-                    ("lock-code-wait", "settings.app_lock.code_wait")
-                };
-                column = column.child(
-                    div()
-                        .id(id)
-                        .role(gpui_kit::Role::Status)
-                        .text_size(text_caption())
-                        .text_color(cx.theme().danger)
-                        .child(tr_args(
-                            key,
-                            &[("time", &crate::settings::account::countdown(wait_ms))],
-                        )),
                 );
             }
             if exhausted {
@@ -748,6 +801,7 @@ impl EntryPage {
                                 .disabled(blocked),
                         ),
                     )
+                    .children(status_line)
                     .child(
                         Button::new("unlock")
                             .design_primary(cx)
@@ -764,13 +818,13 @@ impl EntryPage {
             }
         }
         let dialog = if cover { None } else { self.render_remove_dialog(&self.remove_focus, cx) };
-        let notice = (!cover && self.removed_notice).then(|| {
+        let notice = self.removed_notice.as_ref().filter(|_| !cover).map(|name| {
             div()
                 .id("lock-removed")
                 .role(gpui_kit::Role::Status)
                 .text_size(text_caption())
                 .text_color(cx.theme().success)
-                .child(tr("entry.remove.done"))
+                .child(tr_args("entry.remove.done", &[("name", name)]))
         });
         div()
             .id("entry-lock-frame")

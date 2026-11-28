@@ -3,7 +3,7 @@
 
 //! Which full-screen page the store calls for. Derived, never stored.
 
-use ramflux_desktop_core::{LockState, SourceStatus, Store};
+use ramflux_desktop_core::{AccountKind, LockState, SourceStatus, Store};
 
 /// A step of the entry page (P0).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,8 +24,9 @@ pub enum Page {
     Entry(EntryStep),
     /// P1 workspace.
     Workspace,
-    /// The app lock holds an account closed: a lock page with the account
-    /// code field and nothing else of the accounts.
+    /// An account is held closed (by its app lock, or locked with no app
+    /// lock): a lock page naming that account, with the account code field
+    /// and nothing else of the accounts.
     Lock,
     /// Nothing of the accounts is shown yet: an open account's app lock is
     /// not known (at start, or while the window comes back to the front).
@@ -38,8 +39,9 @@ pub enum Page {
 /// daemon is read, `app_lock_reads`) covers the window: the lock page for a
 /// closed one, a blank cover for an unknown one. Otherwise the workspace
 /// opens when an account is unlocked, or when the source declares no account
-/// at all but already serves contexts (a single implicit account). A locked
-/// account always returns to entry. Without an account, entry stays on the
+/// at all but already serves contexts (a single implicit account). A
+/// person's locked account (no app lock) shows the lock page too, never a
+/// step of entry. Without an account, entry stays on the
 /// node step until a node is confirmed and no discovered node waits for a
 /// decision.
 ///
@@ -64,6 +66,13 @@ pub fn page_for(store: &Store, locks: &Store, app_lock_reads: bool) -> Page {
         }
     } else if store.accounts().any(|a| a.lock_state == LockState::Unlocked) {
         return Page::Workspace;
+    } else if store
+        .accounts()
+        .any(|a| a.lock_state == LockState::Locked && a.kind != AccountKind::HeadlessAi)
+    {
+        // A locked account (no app lock) is met on the same lock page: it is
+        // never a step of the onboarding.
+        return Page::Lock;
     }
     let pending_node = store.nodes().any(|n| !n.confirmed);
     let usable_node = store.nodes().any(|n| n.confirmed && n.enabled);

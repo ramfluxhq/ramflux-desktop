@@ -12,12 +12,15 @@ use gpui_kit::component::button::Button;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, v_flex};
+use gpui_kit::component::button::ButtonVariants as _;
+use std::rc::Rc;
 use gpui_kit::prelude::*;
 use gpui_kit::{Context, IntoElement, Role, SharedString, Window, div};
 use ramflux_desktop_core::{ListState, Listing, Node, UiEventKind, methods};
 use ramflux_desktop_navigation::direction::h_flex;
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 
+use super::node_card::Disclosure;
 use super::{EntryPage, NodeCard};
 use crate::i18n::tr;
 
@@ -60,8 +63,65 @@ impl EntryPage {
         );
         let pending = !pending_nodes.is_empty();
         let usable = known.iter().any(|n| n.enabled);
-        let cards =
-            pending_nodes.into_iter().map(|node| NodeCard::new(node).actions(self.sink.clone()));
+        let daemon = store.daemon().map(|info| {
+            crate::i18n::tr_args(
+                "backend.daemon.socket",
+                &[("path", &info.socket_path), ("accounts", &info.open_accounts.to_string())],
+            )
+        });
+        let details_open = self.node_details;
+        let toggle = {
+            let this = cx.entity().downgrade();
+            Rc::new(move |_: &mut Window, cx: &mut gpui_kit::App| {
+                this.update(cx, |page, cx| {
+                    page.node_details = !page.node_details;
+                    cx.notify();
+                })
+                .ok();
+            })
+        };
+        // The socket path is a technical detail: it rides in the first
+        // card's disclosure, or in the page's own when no node waits.
+        let socket_line = daemon.clone();
+        let cards = pending_nodes.into_iter().enumerate().map(|(ix, node)| {
+            NodeCard::new(node).actions(self.sink.clone()).details(Disclosure {
+                open: details_open,
+                toggle: toggle.clone(),
+                socket: socket_line.clone().filter(|_| ix == 0),
+            })
+        });
+        let page_details = daemon.clone().filter(|_| !pending).map(|line| {
+            v_flex()
+                .id("entry-node-technical")
+                .gap(space(2.))
+                .child(
+                    h_flex().child(
+                        Button::new("entry-node-details-toggle")
+                            .ghost()
+                            .small()
+                            .icon(if details_open {
+                                IconName::ChevronDown
+                            } else {
+                                ramflux_desktop_navigation::direction::forward_icon()
+                            })
+                            .label(tr("node.details"))
+                            .on_click({
+                                let toggle = toggle.clone();
+                                move |_, window, cx| toggle(window, cx)
+                            }),
+                    ),
+                )
+                .when(details_open, |column| {
+                    column.child(
+                        div()
+                            .id("entry-daemon-info")
+                            .text_size(text_caption())
+                            .text_color(cx.theme().muted_foreground)
+                            .child(line)
+                            .test_support(),
+                    )
+                })
+        });
         let muted = cx.theme().muted_foreground;
         let rows = known.into_iter().map(move |node| {
             h_flex()
@@ -74,25 +134,9 @@ impl EntryPage {
                     &crate::i18n::node_health(node.health),
                 )))
         });
-        let daemon = store.daemon().map(|info| {
-            crate::i18n::tr_args(
-                "backend.daemon.socket",
-                &[("path", &info.socket_path), ("accounts", &info.open_accounts.to_string())],
-            )
-        });
         v_flex()
             .id("entry-node")
             .gap(space(3.))
-            .when_some(daemon, |step, daemon| {
-                step.child(
-                    div()
-                        .id("entry-daemon-info")
-                        .text_size(text_caption())
-                        .text_color(cx.theme().muted_foreground)
-                        .child(daemon)
-                        .test_support(),
-                )
-            })
             .child(
                 div()
                     .text_size(text_secondary())
@@ -178,6 +222,7 @@ impl EntryPage {
                 )
                 .children(rows)
             })
+            .children(page_details)
             .when(usable && !pending && self.review_nodes, |step| {
                 step.child(
                     Button::new("entry-continue")

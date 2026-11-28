@@ -145,10 +145,10 @@ pub fn page(context: &SectionContext, inputs: &AccountInputs, cx: &App) -> Setti
                 Some(ramflux_desktop_core::UsernameStatus::Known(None)) => {
                     tr("settings.account.username_none")
                 }
-                Some(ramflux_desktop_core::UsernameStatus::Unavailable(reason)) => tr_args(
-                    "settings.account.username_unavailable",
-                    &[("reason", &i18n::backend_text(reason))],
-                ),
+                // Why is for the log; the line says it in one sentence.
+                Some(ramflux_desktop_core::UsernameStatus::Unavailable(_)) => {
+                    tr("settings.account.username_unavailable")
+                }
                 None => tr("settings.account.username_unknown"),
             };
             let section =
@@ -536,20 +536,23 @@ fn app_lock_item(
             )
             | None => None,
         };
-        let section = section.children(line.map(|line| design::help(line, cx)));
-        let section = section.children(failure.map(|message| {
-            design::help(tr_args("settings.app_lock.failed", &[("reason", &message)]), cx)
-        }));
-        let section = if exhausted {
-            section.child(design::help(tr("settings.app_lock.code_exhausted"), cx))
+        // One status line: the daemon's wait or exhaustion, else the code
+        // refusal, else the failure mapped to a sentence (never its text).
+        let status = if exhausted {
+            Some(tr("settings.app_lock.code_exhausted"))
         } else if waiting {
-            section.child(design::help(
-                tr_args("settings.app_lock.code_wait", &[("time", &countdown(wait_ms))]),
-                cx,
-            ))
+            Some(tr_args("settings.app_lock.code_wait", &[("time", &countdown(wait_ms))]))
+        } else if let Some(line) = line {
+            Some(line)
         } else {
-            section
+            failure.map(|message| {
+                tr_args(
+                    "settings.app_lock.failed",
+                    &[("reason", &i18n::backend_text(&message))],
+                )
+            })
         };
+        let section = section.children(status.map(|text| design::help(text, cx)));
         section.into_any_element()
     })
 }

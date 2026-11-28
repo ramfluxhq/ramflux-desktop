@@ -16,7 +16,6 @@ mod rows;
 mod selection;
 mod view_state;
 
-use ramflux_desktop_navigation::direction::DirectionalExt as _;
 use ramflux_desktop_navigation::scale::{space, text_secondary};
 use std::rc::Rc;
 
@@ -611,23 +610,21 @@ impl Render for Conversation {
         let ask_call = call_ack.ask.clone();
         let in_form = self.context_id.is_none() && self.draft.is_some();
         let open_tool = self.open_tool;
-        let switcher = || {
+        // No conversation chosen: no header rail, no composer, only the
+        // empty state.
+        let no_selection = self.context_id.is_none() && self.draft.is_none();
+        let rail = crate::workspace::DockTool::rail(store, context);
+        let switcher = |tools: Vec<crate::workspace::DockTool>| {
             crate::workspace::DockRail::new(open_tool, |tool, window, cx| {
                 window.dispatch_action(tool.toggle_action(), cx)
             })
+            .tools(tools)
             .into_any_element()
         };
         // Board H01: the header keeps its tools while a panel is open.
-        let tools = (!in_form).then(switcher);
-        // A new conversation or group form has no header: the switcher sits
-        // in a row of its own above it.
-        let tools_row = (self.open_tool.is_none() && in_form).then(|| {
-            ramflux_desktop_navigation::direction::h_flex()
-                .justify_row_end()
-                .px(gpui_kit::rems(32.0 / 15.0))
-                .pt(space(3.))
-                .child(switcher())
-        });
+        let tools = (!in_form && !no_selection && !rail.is_empty()).then(|| switcher(rail));
+        // A new conversation or group form has no header: no tools apply
+        // to it yet, so no switcher row is drawn.
         let header = header::render(
             store,
             context,
@@ -761,7 +758,7 @@ impl Render for Conversation {
         let root = self.root.read(cx);
         let strip = (root.host() == ConfirmHost::Workspace).then(|| root.confirm_strip().clone());
         let draft = self.draft.clone().filter(|_| self.context_id.is_none());
-        let composer = Some(self.composer.clone());
+        let composer = (!no_selection).then(|| self.composer.clone());
         let status = self.status.clone();
         v_flex()
             .id("conversation")
@@ -770,7 +767,8 @@ impl Render for Conversation {
             .min_w_0()
             .bg(cx.theme().background)
             .map(|field| match draft {
-                Some(draft) => field.children(tools_row).child(draft),
+                Some(draft) => field.child(draft),
+                None if no_selection => field.children(status).child(body),
                 None => field.child(header).children(status).child(body),
             })
             .children(strip)

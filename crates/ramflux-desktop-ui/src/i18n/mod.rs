@@ -224,42 +224,72 @@ pub fn unsupported(store: &Store, method: &str) -> Option<SharedString> {
     store.unsupported_reason(method).map(backend_text)
 }
 
-/// A backend reason or message: translated when it is a locale key
-/// (`backend.*`), else shown as the daemon wrote it. A key may be followed
-/// by one space and a JSON object of string arguments, substituted into the
-/// translation (`backend.failure.partial {"done":"1","total":"2",…}`).
 /// What a refused username lookup or change says, by the directory's typed
 /// code: a retry delay when the directory gave one, the unreachable state
-/// for a directory that cannot be used now, else the code itself.
+/// for a directory that cannot be used now, else a generic sentence (the
+/// code is never shown).
 pub fn username_refusal(code: &str, retry_after_ms: Option<u64>) -> SharedString {
     match (code, retry_after_ms) {
         ("rate_limited" | "capacity", Some(ms)) => {
             let seconds = ms.div_ceil(1_000).max(1).to_string();
             tr_args("username.error.retry", &[("seconds", &seconds)])
         }
-        ("directory_unavailable" | "transport" | "timeout", _) => tr("username.error.unreachable"),
-        _ => tr_args("username.error.other", &[("code", code)]),
+        ("directory_unavailable", _) => tr("settings.account.username_unavailable"),
+        ("transport" | "timeout", _) => tr("username.error.unreachable"),
+        _ => tr("username.error.other"),
     }
 }
 
+/// A backend reason or message: translated when it is a locale key
+/// (`backend.*`) or a typed code the desktop knows. Any other text (a daemon
+/// or transport message) is never shown as written: it goes to the app log
+/// and the user reads the generic sentence. A key may be followed by one
+/// space and a JSON object of string arguments, substituted into the
+/// translation (`backend.failure.partial {"done":"1","total":"2",…}`).
 pub fn backend_text(text: &str) -> SharedString {
     if !text.starts_with("backend.") {
-        return SharedString::from(text.to_owned());
+        return known_code(text).unwrap_or_else(|| {
+            if !text.is_empty() {
+                ramflux_desktop_sdk::local::app_log::warn(&format!("unmapped failure text: {text}"));
+            }
+            tr("backend.failure.generic")
+        });
     }
     let Some((key, args)) = text.split_once(' ') else { return tr(text) };
     let Ok(serde_json::Value::Object(args)) = serde_json::from_str::<serde_json::Value>(args)
     else {
-        return SharedString::from(text.to_owned());
+        return tr("backend.failure.generic");
     };
+    // An argument is a key to translate or the text it carries (a name).
     let args: Vec<(&str, String)> = args
         .iter()
         .map(|(name, value)| {
             let value = value.as_str().map_or_else(|| value.to_string(), str::to_owned);
-            (name.as_str(), backend_text(&value).to_string())
+            let value = if value.starts_with("backend.") {
+                backend_text(&value).to_string()
+            } else {
+                value
+            };
+            (name.as_str(), value)
         })
         .collect();
     let borrowed: Vec<(&str, &str)> = args.iter().map(|(n, v)| (*n, v.as_str())).collect();
     tr_args(key, &borrowed)
+}
+
+/// The sentence for a typed failure code the desktop knows, or `None`.
+/// A code may carry its message after a colon (`code: message`): only the
+/// code is read.
+fn known_code(text: &str) -> Option<SharedString> {
+    let code = text.split_once(':').map_or(text, |(code, _)| code).trim();
+    match code {
+        "directory_unavailable" | "UsernameDirectoryRefused" => {
+            Some(tr("settings.account.username_unavailable"))
+        }
+        "unsupported" => Some(tr("backend.failure.unsupported")),
+        "transport" | "timeout" | "unreachable" => Some(tr("backend.failure.network")),
+        _ => None,
+    }
 }
 
 /// What a failed request was about, in words (never the method name): the

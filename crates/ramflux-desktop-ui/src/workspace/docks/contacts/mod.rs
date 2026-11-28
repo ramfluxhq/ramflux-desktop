@@ -29,7 +29,7 @@ use gpui_kit::component::v_flex;
 use gpui_kit::prelude::*;
 use gpui_kit::{Context, Entity, EventEmitter, IntoElement, Render, Subscription, Window, div};
 use ramflux_desktop_core::{
-    Listing, LockState, Participant, ParticipantId, Store, UiEventKind, methods, selectors,
+    LockState, Participant, ParticipantId, Store, UiEventKind, methods, selectors,
 };
 use ramflux_desktop_navigation::scale::{space, text_caption};
 
@@ -386,19 +386,47 @@ impl ContactsDock {
     }
 }
 
-impl Render for ContactsDock {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let form = (!self.adding).then(|| self.add_form_element(false, cx).0);
+impl ContactsDock {
+    /// The one contact the Profile panel shows: its row with the safety
+    /// state, Verify, Message and the actions menu. Opened from a
+    /// conversation, the panel is about that peer only; the global contact
+    /// tools live in the Contacts section.
+    pub fn peer_section(
+        &mut self,
+        peer: &ParticipantId,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui_kit::AnyElement> {
         let handle = self.store.read(cx);
         let store: &Store = handle.store();
+        let contact = store.participant(peer)?.clone();
         let verify_reason = crate::gate::reason(store, methods::SAFETY_VERIFY);
+        let request = requests::outgoing(store, &contact);
+        let id = contact.id.clone();
+        let on_message = cx.listener(move |_, _, _, cx| {
+            cx.emit(ContactsDockEvent::MessageRequested(id.clone()));
+        });
+        let id = contact.id.clone();
+        let verify = rows::VerifyHandlers {
+            reason: verify_reason,
+            start: Box::new(cx.listener(move |this, _, window, cx| {
+                this.start_verify(id.clone(), cx);
+                window.focus(&this.dialog_focus, cx);
+            })),
+        };
+        Some(rows::contact_row(&contact, &self.sink, verify, on_message, request, cx))
+    }
+}
+
+impl Render for ContactsDock {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let handle = self.store.read(cx);
+        let store: &Store = handle.store();
         // Answers to incoming links are local when requests cannot travel.
         let local_answers = crate::gate::reason(store, methods::CONTACT_REQUEST).is_some();
         let requests = rows::requests(store);
         let pending = selectors::pending_contact_requests(store);
         let request_reason = requests::reason(store);
         let has_link_requests = requests.iter().any(|r| matches!(r, rows::Request::Link(_)));
-        let contacts: Vec<Participant> = selectors::contacts(store).into_iter().cloned().collect();
         let blocked: Vec<Participant> =
             selectors::blocked_contacts(store).into_iter().cloned().collect();
         let this = cx.weak_entity();
@@ -429,9 +457,6 @@ impl Render for ContactsDock {
             .id("dock-contacts")
             .size_full()
             .overflow_y_scroll()
-            .when_some(form, |col, form| {
-                col.child(section("dock.contacts.add.title", cx)).child(form)
-            })
             .child(section("dock.contacts.card.title", cx))
             .child(card)
             // The heading stays once the setting is known, so the switch
@@ -480,29 +505,6 @@ impl Render for ContactsDock {
                         .map(|invitation| requests::invitation_row(invitation, &self.sink, cx)),
                 )
             })
-            .child(section("dock.contacts.list", cx))
-            .children(crate::list_state::placeholder(
-                "contacts-list-state",
-                crate::list_state::of(store, Listing::Contacts, contacts.is_empty()),
-                "dock.contacts.empty",
-                cx,
-            ))
-            .children(contacts.iter().map(|c| {
-                let id = c.id.clone();
-                let on_message = cx.listener(move |_, _, _, cx| {
-                    cx.emit(ContactsDockEvent::MessageRequested(id.clone()));
-                });
-                let id = c.id.clone();
-                let verify = rows::VerifyHandlers {
-                    reason: verify_reason.clone(),
-                    start: Box::new(cx.listener(move |this, _, window, cx| {
-                        this.start_verify(id.clone(), cx);
-                        window.focus(&this.dialog_focus, cx);
-                    })),
-                };
-                let request = requests::outgoing(store, c);
-                rows::contact_row(c, &self.sink, verify, on_message, request, cx)
-            }))
             .when(!blocked.is_empty(), |col| {
                 col.child(section("dock.contacts.blocked", cx))
                     .children(blocked.iter().map(|c| rows::blocked_row(c, &self.sink, cx)))

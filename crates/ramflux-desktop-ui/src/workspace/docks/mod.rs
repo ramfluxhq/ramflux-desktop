@@ -14,6 +14,8 @@
 //! - [`contacts`]: contacts, request and safety state, verification.
 //! - [`members`]: members and roles of the current group, governance.
 //! - [`approvals`]: pending grants, grants, standing approvals, audit.
+//! - [`profile`]: the open conversation's peer, with the evidence as
+//!   "Technical details".
 //! - [`evidence`]: read-only protocol evidence for the current context.
 
 pub mod approvals;
@@ -23,6 +25,7 @@ pub mod layout;
 pub mod members;
 pub mod objects;
 pub mod prefs;
+pub mod profile;
 
 use ramflux_desktop_navigation::scale::{space, text_caption, text_secondary};
 use std::rc::Rc;
@@ -38,6 +41,7 @@ use gpui_kit::{
     AnyView, App, ClickEvent, Context, EventEmitter, FocusHandle, Focusable, IntoElement, Render,
     Role, SharedString, Window, div,
 };
+use ramflux_desktop_core::{Context as ConversationContext, ContextKind, ParticipantKind, Store, selectors};
 use ramflux_desktop_navigation::direction::h_flex;
 use serde::{Deserialize, Serialize};
 
@@ -66,6 +70,32 @@ impl DockTool {
     /// Every tool in rail order.
     pub const ALL: [Self; 5] =
         [Self::Objects, Self::Contacts, Self::Members, Self::Approvals, Self::Evidence];
+
+    /// The tools the conversation header offers for `context`, in rail
+    /// order: Files; Profile in a direct conversation; Members in a group;
+    /// Approvals when there is something to approve or an agent takes part.
+    /// Evidence has no rail entry: its content is the Profile panel's
+    /// "Technical details".
+    pub fn rail(store: &Store, context: Option<&ConversationContext>) -> Vec<Self> {
+        let Some(context) = context else { return Vec::new() };
+        let agent_present = selectors::participants(store, &context.id)
+            .into_iter()
+            .any(|p| p.kind == ParticipantKind::Agent);
+        let approvals =
+            agent_present || store.grants().next().is_some() || store.standing_approvals().next().is_some();
+        let direct = context.kind == ContextKind::Direct;
+        let group = context.kind == ContextKind::Group;
+        Self::ALL
+            .into_iter()
+            .filter(|tool| match tool {
+                Self::Objects => true,
+                Self::Contacts => direct,
+                Self::Members => group,
+                Self::Approvals => approvals,
+                Self::Evidence => false,
+            })
+            .collect()
+    }
 
     /// Stable id fragment, used for element ids, scopes and persisted layouts.
     pub const fn key(self) -> &'static str {
@@ -147,13 +177,22 @@ pub struct DockToolPanel {
     /// The open tool: only it is drawn, so the dock shows one panel with its
     /// own header and tabs (design H01) and no tab strip of its own.
     shown: bool,
+    /// The tools the open conversation offers (the tabs under the title).
+    rail: Vec<DockTool>,
     focus_handle: FocusHandle,
 }
 
 impl DockToolPanel {
     /// A panel for `tool` showing `content`.
     pub fn new(tool: DockTool, content: AnyView, cx: &mut Context<Self>) -> Self {
-        Self { tool, content, pinned: false, shown: false, focus_handle: cx.focus_handle() }
+        Self {
+            tool,
+            content,
+            pinned: false,
+            shown: false,
+            rail: DockTool::ALL.to_vec(),
+            focus_handle: cx.focus_handle(),
+        }
     }
 
     fn close(&mut self, _: &CloseDock, _: &mut Window, cx: &mut Context<Self>) {
@@ -168,6 +207,11 @@ impl DockToolPanel {
     /// Marks whether this tool is the open one.
     pub fn set_shown(&mut self, shown: bool) {
         self.shown = shown;
+    }
+
+    /// Sets the tools the tabs offer.
+    pub fn set_rail(&mut self, rail: Vec<DockTool>) {
+        self.rail = rail;
     }
 
     /// Marks the tool pinned (stays open, restored on launch).
@@ -276,7 +320,7 @@ impl Render for DockToolPanel {
                                 )),
                             ),
                     )
-                    .child(DockRail::tabs(tool))
+                    .child(DockRail::tabs(tool, self.rail.clone()))
             })
             .child(
                 div()
@@ -289,6 +333,9 @@ impl Render for DockToolPanel {
     }
 }
 
+/// The window width (px) from which the header rail shows its labels.
+const RAIL_LABEL_MIN_WIDTH: f32 = 960.0;
+
 /// Opens or closes a tool.
 type ToggleTool = dyn Fn(DockTool, &mut Window, &mut App);
 
@@ -299,6 +346,7 @@ type ToggleTool = dyn Fn(DockTool, &mut Window, &mut App);
 pub struct DockRail {
     open: Option<DockTool>,
     labeled: bool,
+    tools: Vec<DockTool>,
     on_toggle: Rc<ToggleTool>,
 }
 
@@ -308,15 +356,22 @@ impl DockRail {
         open: Option<DockTool>,
         on_toggle: impl Fn(DockTool, &mut Window, &mut App) + 'static,
     ) -> Self {
-        Self { open, labeled: false, on_toggle: Rc::new(on_toggle) }
+        Self { open, labeled: false, tools: DockTool::ALL.to_vec(), on_toggle: Rc::new(on_toggle) }
+    }
+
+    /// Limits the rail to `tools` (what the open conversation offers).
+    pub fn tools(mut self, tools: Vec<DockTool>) -> Self {
+        self.tools = tools;
+        self
     }
 
     /// The switcher of an open panel: labelled tabs that dispatch the tools'
     /// toggle actions.
-    pub fn tabs(open: DockTool) -> Self {
+    pub fn tabs(open: DockTool, tools: Vec<DockTool>) -> Self {
         Self {
             open: Some(open),
             labeled: true,
+            tools,
             on_toggle: Rc::new(|tool: DockTool, window: &mut Window, cx: &mut App| {
                 window.dispatch_action(tool.toggle_action(), cx)
             }),
@@ -325,9 +380,12 @@ impl DockRail {
 }
 
 impl RenderOnce for DockRail {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let labeled = self.labeled;
-        let buttons = DockTool::ALL.into_iter().map(|tool| {
+        // Icon and label side by side; under 960 px the label collapses to
+        // the icon (the tooltip and the accessible name stay).
+        let wide = f32::from(window.viewport_size().width) >= RAIL_LABEL_MIN_WIDTH;
+        let buttons = self.tools.iter().copied().map(|tool| {
             let on_toggle = self.on_toggle.clone();
             let open = self.open == Some(tool);
             // The header icons keep `rail-*`; an open panel's labelled tabs
@@ -342,6 +400,8 @@ impl RenderOnce for DockRail {
             if labeled {
                 let button = button.label(tool.title());
                 if open { button.design_primary(cx) } else { button.design_secondary(cx) }
+            } else if wide {
+                button.small().ghost().icon(tool.icon()).label(tool.title())
             } else {
                 button.small().ghost().icon(tool.icon())
             }

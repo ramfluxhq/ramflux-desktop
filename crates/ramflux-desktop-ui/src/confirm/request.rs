@@ -174,8 +174,8 @@ fn describe_kind(
             (tr_args("confirm.revoke_standing", &[("scope", &scope)]), None, Risk::High)
         }
         IntentKind::RevokeDevice { device_id } => {
-            let label =
-                store.device(device_id).map_or_else(|| device_id.to_string(), |d| d.label.clone());
+            // A device is named for a person, never by its id.
+            let label = tr("settings.devices.other_device");
             (tr_args("confirm.revoke_device", &[("device", &label)]), None, Risk::High)
         }
         IntentKind::ConfirmNode { node_id, pin_source } => {

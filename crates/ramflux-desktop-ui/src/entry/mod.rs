@@ -125,8 +125,10 @@ pub struct EntryPage {
     remove_focus: gpui_kit::FocusHandle,
     /// What the lock page tells after a recovery's code answer.
     lock_notice: Option<remove::LockNotice>,
-    /// An account was just removed from this device.
-    removed_notice: bool,
+    /// The node step's "Technical details" disclosure is open.
+    node_details: bool,
+    /// The name of an account just removed from this device.
+    removed_notice: Option<gpui_kit::SharedString>,
     node: Option<NodeId>,
     review_nodes: bool,
     submitted: Option<AccountId>,
@@ -262,7 +264,8 @@ impl EntryPage {
             remove_dialog: None,
             remove_focus: cx.focus_handle(),
             lock_notice: None,
-            removed_notice: false,
+            removed_notice: None,
+            node_details: false,
             node: None,
             review_nodes: false,
             submitted: None,

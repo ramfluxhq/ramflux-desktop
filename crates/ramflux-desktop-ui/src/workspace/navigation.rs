@@ -134,7 +134,24 @@ impl Workspace {
         match self.route {
             // Design board 07: the people table until a contact is chosen.
             WorkspaceRoute::Contacts if self.contact_profile.read(cx).participant().is_none() => {
-                Some(self.contact_directory.update(cx, |list, cx| list.detail(None, window, cx)))
+                let people = self.contact_directory.update(cx, |list, cx| list.detail(None, window, cx));
+                // The account's own contact tools (my card, requests, the
+                // auto-accept setting, invitations, blocked) sit under the
+                // people table; the conversation's Profile panel has none.
+                Some(
+                    gpui_kit::component::v_flex()
+                        .size_full()
+                        .child(gpui_kit::div().flex_1().min_h_0().child(people))
+                        .child(
+                            gpui_kit::div()
+                                .id("contacts-tools")
+                                .flex_none()
+                                .max_h(gpui_kit::rems(240.0 / 15.0))
+                                .overflow_y_scroll()
+                                .child(self.contacts.clone()),
+                        )
+                        .into_any_element(),
+                )
             }
             WorkspaceRoute::Contacts => Some(self.contact_profile.clone().into_any_element()),
             WorkspaceRoute::Strangers => {

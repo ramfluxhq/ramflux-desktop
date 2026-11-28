@@ -76,6 +76,9 @@ fn the_window_on_a_real_daemon_shows_the_empty_node_list_and_follows_a_restart(
         })
     });
     assert_eq!(page(cx, &shell), Page::Entry(EntryStep::Node));
+    // The socket is a technical detail: one click on "Technical details" away.
+    assert!(!exists(cx, handle, "entry-daemon-info"), "the details are collapsed");
+    click(cx, handle, "entry-node-details-toggle");
     assert!(exists(cx, handle, "entry-daemon-info"), "the daemon's socket and accounts show");
     let empty = in_window(cx, handle, |window, _| {
         window.try_find("entry-node-empty").and_then(|e| e.label().map(str::to_owned))
