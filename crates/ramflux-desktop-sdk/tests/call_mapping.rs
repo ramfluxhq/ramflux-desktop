@@ -92,25 +92,6 @@ fn entry_and_node_methods_map_to_daemon_requests() {
         (m.as_str(), a.as_deref(), b),
         ("account.unlock", Some("acct-x"), json!({ "passphrase": "pw" }))
     );
-    let (m, _, b, _) =
-        mapped(secret(methods::ACCOUNT_BACKUP_IMPORT, json!({ "path": "/b" }), &["pw"]));
-    assert_eq!(
-        (m.as_str(), b),
-        ("account.backup.import", json!({ "input_path": "/b", "passphrase": "pw" }))
-    );
-    let (m, a, b, _) = mapped(secret(
-        methods::ACCOUNT_BACKUP_EXPORT,
-        json!({ "account_id": "acct-main", "path": "/out.backup" }),
-        &["pw"],
-    ));
-    assert_eq!(
-        (m.as_str(), a.as_deref(), b),
-        (
-            "account.backup.export",
-            Some("acct-main"),
-            json!({ "output_path": "/out.backup", "passphrase": "pw" })
-        )
-    );
     let (m, a, _, _) = mapped(call(methods::ACCOUNT_LOCK, json!({ "account_id": "acct-main" })));
     assert_eq!((m.as_str(), a.as_deref()), ("account.lock", Some("acct-main")));
     let (m, _, b, _) = mapped(secret(

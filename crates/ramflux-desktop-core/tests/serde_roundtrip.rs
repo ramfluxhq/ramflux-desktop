@@ -217,8 +217,6 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         IntentKind::RemoveLocalAccount { .. } => "RemoveLocalAccount",
         IntentKind::CancelRecovery => "CancelRecovery",
         IntentKind::Unlock { .. }
-        | IntentKind::RestoreBackup { .. }
-        | IntentKind::ExportBackup { .. }
         | IntentKind::CreateBackup { .. }
         | IntentKind::VerifyRestore { .. }
         | IntentKind::ConfirmCeremony { .. }
@@ -227,7 +225,7 @@ fn intent_kind_name(kind: &IntentKind) -> &'static str {
         | IntentKind::ClaimUsername { .. } => "secret",
     }
 }
-/// Serializable intent variants (all but the nine secret-carrying kinds).
+/// Serializable intent variants (all but the seven secret-carrying kinds).
 const SERIALIZABLE_INTENT_VARIANTS: usize = 98;
 
 fn ui_event_kind_name(kind: &UiEventKind) -> &'static str {
@@ -1311,12 +1309,6 @@ fn secret_intents_refuse_to_serialize() {
     let secret = || SecretInput::new("correct horse");
     let kinds = [
         IntentKind::Unlock { account_id: AccountId::new("a-1"), secret: secret() },
-        IntentKind::RestoreBackup { path: "/tmp/b".into(), secret: secret() },
-        IntentKind::ExportBackup {
-            account_id: AccountId::new("a-1"),
-            path: "/tmp/b".into(),
-            secret: secret(),
-        },
         IntentKind::RotatePassphrase {
             account_id: AccountId::new("a-1"),
             current: secret(),
@@ -1344,8 +1336,6 @@ fn secret_intents_refuse_to_serialize() {
         "Unlock",
         "CreateAccount",
         "ActivateDevice",
-        "RestoreBackup",
-        "ExportBackup",
         "RotatePassphrase",
         "CreateBackup",
         "VerifyRestore",

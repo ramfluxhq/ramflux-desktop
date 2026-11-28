@@ -8,8 +8,7 @@
 //! the root as a secret) or is marked view-only: the MCP and A2I lists are
 //! read-only by design, and appearance is a local preference.
 //!
-//! - [`account`]: lock, passphrase rotation, backup export (with its own
-//!   passphrase).
+//! - [`account`]: lock, passphrase rotation.
 //! - [`backup`]: full backup and full restore, with progress, the review
 //!   of a checked backup, and the final counts.
 //! - [`agents`]: AI participants the open account custodies: creating one,
@@ -42,7 +41,7 @@ pub mod sync;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::FocusTrapElement as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{InputEvent, InputState};
+use gpui_kit::component::input::InputState;
 use gpui_kit::component::setting::Settings;
 use gpui_kit::component::{
     ActiveTheme as _, IconName, Selectable as _, Sizable as _, StyledExt as _, v_flex,
@@ -218,7 +217,6 @@ impl SettingsPage {
             username_configured: ramflux_desktop_sdk::username_center::current().is_some(),
             current: masked("settings.account.current", window, cx),
             next: masked("settings.account.next", window, cx),
-            backup: masked("settings.account.backup_passphrase", window, cx),
             username: crate::i18n::localized_input(
                 "settings.account.username_name",
                 window,
@@ -256,12 +254,6 @@ impl SettingsPage {
                 }
             },
         ));
-        // The export control enables once a backup passphrase is typed.
-        subscriptions.push(cx.subscribe(&inputs.backup, |_, _, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Change) {
-                cx.notify();
-            }
-        }));
         let backup = cx.new(|cx| backup::BackupPanel::new(store.clone(), root.clone(), window, cx));
         subscriptions.push(cx.observe(&backup, |_, _, cx| cx.notify()));
         let agents = cx.new(|cx| {
@@ -392,11 +384,6 @@ impl SettingsPage {
         if self.link_request.take().is_some() {
             cx.notify();
         }
-    }
-
-    /// The masked backup passphrase input.
-    pub fn backup_input(&self) -> &Entity<InputState> {
-        &self.inputs.backup
     }
 }
 

@@ -210,8 +210,6 @@ fn attach_runtime_key(mut effect: Effect, kind: IntentKind) -> Effect {
 fn take_secrets(kind: IntentKind) -> Vec<SecretInput> {
     match kind {
         IntentKind::Unlock { secret, .. }
-        | IntentKind::RestoreBackup { secret, .. }
-        | IntentKind::ExportBackup { secret, .. }
         | IntentKind::CreateBackup { secret, .. }
         | IntentKind::VerifyRestore { secret, .. }
         | IntentKind::ClaimUsername { secret, .. }

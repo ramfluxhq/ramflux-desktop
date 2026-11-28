@@ -168,10 +168,6 @@ pub const APP_LOCK_CODE_ANSWER: &str = "app_lock.code.answer";
 pub const APP_LOCK_LIFECYCLE: &str = "account.app_lock.lifecycle";
 /// Rotate an account passphrase (carries secrets).
 pub const ACCOUNT_ROTATE_PASSPHRASE: &str = "account.passphrase.rotate";
-/// Export an encrypted account backup (carries a secret).
-pub const ACCOUNT_BACKUP_EXPORT: &str = "account.backup.export";
-/// Restore an account from a backup (carries a secret).
-pub const ACCOUNT_BACKUP_IMPORT: &str = "account.backup.import";
 /// Start a full backup of an account to a file (carries a secret).
 pub const BACKUP_CREATE: &str = "backup.create";
 /// Start reading and verifying a full backup file (carries a secret).
